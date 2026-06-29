@@ -42,6 +42,11 @@ M.defaults = {
       },
     },
     popup = {
+      style = {
+        border = nil,
+        window = nil,
+        winhighlight = nil,
+      },
       open_on_prompt = false,
       keys = {
         i = {

@@ -14,7 +14,6 @@ Set `editor = nil` to only load the API.
 Currently supports zsh, bash, and fish.
 It is easy to add support for other shells as well if needed.
 
-
 ## Setup
 
 ### Shell
@@ -110,33 +109,47 @@ require("termio").setup({
   -- Lua pattern replacements. Changing commands are cleared with C-c instead of C-e C-u.
   clear_interrupt_replace_patterns = { { "\\$", "" }, { "^> ", "" } },
   editor = {
+    -- Bundled editor to use. nil gives API-only mode.
     type = "integrated", -- "integrated" | "minimal" | "overlay" | nil
+    -- Vim regex matched against terminal buffer names before enabling editor keymaps.
     terminal_name_pattern = [[\v(:| )(/[^ ]*/)?(zsh|bash|fish)( |$)]],
+    -- Terminal-mode key that opens the editor.
     open = "<Esc>",
+    -- Filter function to disable editor. Can be used to disable e.g. when TUI active.
     is_disabled = function(buf)
       -- Example, assuming you track if TUI active in terminal
       -- See `./docs/tui-detection.md` for tracking alt-screen/TUI state.
       -- return vim.b[buf].term_tui_active
       return false
     end,
+    -- Global editor action keymaps by mode: t=terminal, n=normal.
     keys = {
       t = {
         ["<Esc>"] = "open",
         ["<CR>"] = "submit",
         ["<C-u>"] = "clear",
         ["<C-s>"] = "write",
-        ["<M-t>"] = "toggle",
+        ["<M-t>"] = "toggle", -- This toggles the plugin off and on
       },
       n = {
         ["<CR>"] = "submit",
         ["<C-u>"] = "clear",
         ["<C-s>"] = "write",
         ["<Esc>"] = "save_and_close",
-        ["<M-t>"] = "toggle",
+        ["<M-t>"] = "toggle", -- This toggles the plugin off and on
       },
     },
-    overlay = {
+    popup = {
+      -- Popup window styling. nil keeps editor defaults or the active theme.
+      style = {
+        border = nil,
+        window = nil, -- nvim_open_win style, e.g. "minimal".
+        winhighlight = nil,
+      },
+      -- Open popup automatically when a fresh prompt is detected.
       open_on_prompt = false,
+      -- Popup-local action keymaps by mode.
+      -- down/up move focus to the terminal while keeping popup open.
       keys = {
         n = {
           q = "close",
@@ -151,8 +164,10 @@ require("termio").setup({
         x = { j = "down", k = "up" },
         o = { j = "down", k = "up" },
       },
+      -- Keys sent to the target terminal instead of handled by the popup.
       pass_through_insert_keys = { "<Up>", "<Tab>" },
       pass_through_normal_keys = { "}", "<C-d>", "<C-b>", "G", "L" },
+      -- Same as above, but only while cursor is on the first popup line.
       pass_through_normal_keys_first_line = { "{", "<C-u>", "gg", "H" },
     },
   },
@@ -161,7 +176,28 @@ require("termio").setup({
 })
 ```
 
-Set `editor.type = nil` for API-only mode.
+## Editors
+
+Currently includes 3 bundled 'editors' that use the API.
+
+#### `integrated`
+
+- What: Takes over the normal mode of the terminal buffer.
+- Good: No separate window, edit terminal command like any other text.
+- Bad: Needs to fight with the shell process over the control of the terminal buffer. Needs to sync often, so most jittery. Most likely to have bugs.
+
+#### `minimal`
+
+- What: Opens a popup for editing the current command.
+- Good: No syncing concerns. Simple. More control, e.g., completions.
+- Bad: Separate window. Less seamless than editing in-place.
+- Note: Was meant to be minimal.
+
+#### `overlay`
+
+- What: Same as popup, but opens the window where the command is.
+- Good: Bit more seamless than minimal.
+- Bad: More window/focus handling complexity.
 
 ## API
 
@@ -193,7 +229,7 @@ User commands target the current terminal buffer.
 
 ## Completions
 
-Bundled editors set `vim.bo.filetype = "termio"`.
+Bundled popup editors set `vim.bo.filetype = "termio"`.
 Use that filetype to set custom completions for the editor buffer.
 
 Blink example:

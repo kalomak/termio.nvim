@@ -1,4 +1,5 @@
 local autoresize = require("termio.editors.autoresize")
+local config = require("termio.config")
 local popup = require("termio.editors.popup")
 local plugin_state = require("termio.state")
 local M = popup.new({
@@ -15,6 +16,7 @@ end
 local function centered_float_config(target_win, width, height)
   local target_width = vim.api.nvim_win_get_width(target_win)
   local target_height = vim.api.nvim_win_get_height(target_win)
+  local style = config.options.editor.popup.style
   return {
     relative = "win",
     win = target_win,
@@ -22,8 +24,8 @@ local function centered_float_config(target_win, width, height)
     height = height,
     row = math.floor((target_height - height) / 2),
     col = math.floor((target_width - width) / 2),
-    style = "minimal",
-    border = "rounded",
+    style = style.window or "minimal",
+    border = style.border or "rounded",
   }
 end
 

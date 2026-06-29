@@ -32,6 +32,13 @@ function M.is_first_visual_line()
   return vim.fn.winline() == 1
 end
 
+function M.apply_window_style(win)
+  local style = config.options.editor.popup.style
+  if style.winhighlight then
+    vim.wo[win].winhighlight = style.winhighlight
+  end
+end
+
 function M.feed_key(key, mode)
   vim.api.nvim_feedkeys(helpers.term_codes(key), mode, false)
 end
@@ -266,6 +273,7 @@ function M:open(ctx)
   vim.cmd.stopinsert()
   local data = self:prepare_data(ctx)
   local edit_buf, edit_win = self:create_editor_window(ctx, data)
+  M.apply_window_style(edit_win)
   M.set_initial_cursor(edit_buf, edit_win, data.shell.command, data.shell.cursor)
   self:register({
     edit_buf = edit_buf,

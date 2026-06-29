@@ -1,41 +1,42 @@
 # TODO
 
-## Bugs
-
-### Serious lag in dev harness
-#dev
+## Serious lag in dev harness
+#bug #dev
 - maybe expensive reads in dev harness status? does it read from shell via osc maybe?
 - or is there some event firing often? some cursormove or textchange?
 - or is the cursor being updated from shell?
 - whatever it is, it happened in the last few commits
 - maybe it was zsh vi mode?
 
-## Features
+## auto-open support
+#feature #popup 
+- see historical impl
 
-### p support
-#popup
+## p support
+#feature #popup
 
-### add support for reading multi-line commands via shell integration
-#api #shell-integration
+## add support for reading multi-line commands via shell integration
+#feature #api #shell-integration
 - fish supports natively
 - zsh support PREBUFFER
 - bash does not seem to support
 - this would make reading multi-line commands with completion
 
-### edits with modifiable and non-modifiable should clamp to zone
-#integrated #enhancement
+## edits with modifiable and non-modifiable should clamp to zone
+#feature #integrated #enhancement
 - at least if trailing non-mod zone since it actually happens quite often on accident
 
-### expose status to users
+## expose status to users
+#feature 
 
-### add log levels
-#enhancement
+## add log levels
+#feature #enhancement
 - number based, python scicomp style
 
-### add simple markers to tab complete
-#maybe
+## add simple markers to tab complete
+#feature #maybe
 - not really needed(?) now since we read from zsh shell directly
 
-## Refactor
-
-## Chores
+## cleanup for release
+# chore
+- put logs etc to a reasonable place

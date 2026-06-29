@@ -35,10 +35,11 @@ local function popup_config(target_win, target_buf, lines)
   local win_row, col = unpack(vim.api.nvim_win_get_position(target_win))
   local row = win_row + command_screen_row(target_win, target_buf)
   local width = vim.api.nvim_win_get_width(target_win)
+  local style = popup_options().style
   return {
     relative = "editor",
-    style = "minimal",
-    border = "none",
+    style = style.window or "minimal",
+    border = style.border or "none",
     width = width,
     height = autoresize.height_for_lines(lines, width, max_float_height(row)),
     row = row,
