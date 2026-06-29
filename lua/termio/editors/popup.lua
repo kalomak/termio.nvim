@@ -239,30 +239,20 @@ function M:handlers(ctx, edit_buf, edit_win)
   })
 end
 
----Create a popup editor buffer.
----@param opts table
+---Create a prompt editor buffer.
+---@param data table
 ---@return integer
-function M.make_buffer(opts)
-  local edit_buf = vim.api.nvim_create_buf(false, opts.scratch ~= false)
-  vim.bo[edit_buf].buftype = opts.buftype or "nofile"
+function M:create_buffer(data)
+  local edit_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[edit_buf].buftype = "prompt"
   vim.bo[edit_buf].bufhidden = "wipe"
-  vim.bo[edit_buf].filetype = "termio"
+  vim.bo[edit_buf].filetype = config.options.editor.filetype
+  vim.b[edit_buf].termio_editor = config.options.editor.type
   vim.b[edit_buf].termio_fixed_editor = true
-  if opts.prompt then
-    vim.fn.prompt_setprompt(edit_buf, opts.prompt)
-  end
-  vim.api.nvim_buf_set_lines(edit_buf, 0, -1, false, opts.lines)
+  vim.fn.prompt_setprompt(edit_buf, data.prompt)
+  vim.api.nvim_buf_set_lines(edit_buf, 0, -1, false, data.lines)
   vim.bo[edit_buf].modified = false
   return edit_buf
-end
-
-function M:create_buffer(data)
-  return M.make_buffer({
-    buftype = "prompt",
-    scratch = false,
-    prompt = data.prompt,
-    lines = data.lines,
-  })
 end
 
 function M:open(ctx)

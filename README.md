@@ -111,6 +111,8 @@ require("termio").setup({
   editor = {
     -- Bundled editor to use. nil gives API-only mode.
     type = "integrated", -- "integrated" | "minimal" | "overlay" | nil
+    -- Filetype assigned to bundled editor buffers.
+    filetype = "bash",
     -- Vim regex matched against terminal buffer names before enabling editor keymaps.
     terminal_name_pattern = [[\v(:| )(/[^ ]*/)?(zsh|bash|fish)( |$)]],
     -- Terminal-mode key that opens the editor.
@@ -229,17 +231,26 @@ User commands target the current terminal buffer.
 
 ## Completions
 
-Bundled popup editors set `vim.bo.filetype = "termio"`.
-Use that filetype to set custom completions for the editor buffer.
+Bundled editors set `vim.b.termio_editor` to `"minimal"`, `"overlay"`, or `"integrated"`.
+Use that marker to set custom completions for editor buffers.
 
 Blink example:
 
 ```lua
 require("blink.cmp").setup({
   sources = {
-    per_filetype = {
-      ["termio"] = { "path", "snippets" },
-    },
+    default = function()
+      if vim.b.termio_editor == "minimal" or vim.b.termio_editor == "overlay" then
+        return { "path", "snippets" }
+      end
+      return { "lsp", "path", "snippets", "buffer" }
+    end,
+  },
+  term = {
+    enabled = true,
+    sources = function()
+      return vim.b.termio_editor == "integrated" and { "path", "snippets" } or {}
+    end,
   },
 })
 ```

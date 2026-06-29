@@ -20,6 +20,7 @@ M.defaults = {
   },
   editor = {
     type = "integrated",
+    filetype = "bash",
     terminal_name_pattern = [[\v(:| )(/[^ ]*/)?(zsh|bash|fish)( |$)]],
     open = "<Esc>",
     is_disabled = function()

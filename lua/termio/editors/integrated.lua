@@ -787,6 +787,8 @@ M.setup = function()
       if not helpers.is_enabled_terminal(args.buf) then
         return
       end
+      vim.bo[args.buf].filetype = config.options.editor.filetype
+      vim.b[args.buf].termio_editor = "integrated"
       M.buffers[args.buf] = {
         has_unsynced_edits = false,
         keymaps = keymaps.group({
