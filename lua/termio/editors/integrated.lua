@@ -1,5 +1,6 @@
 local config = require("termio.config")
 local api = require("termio.api")
+local editable_zone = require("termio.editable_zone")
 local helpers = require("termio.util.helpers")
 local keymaps = require("termio.util.keymaps")
 local log = require("termio.util.log")
@@ -74,67 +75,6 @@ local function get_buffer_location_from_shell_offset(buf, offset)
   return terminal_buffer.location_from_offset(buf, api.command_start_cursor(buf), offset)
 end
 
----Return the editable command zone in the terminal buffer.
----@param buf? integer
----@return { start_row: integer, start_col: integer, end_row: integer, end_col: integer }?
-function M.get_editable_zone(buf)
-  local target = buf or vim.api.nvim_get_current_buf()
-  local cursor = api.command_start_cursor(target)
-  if not cursor then
-    return nil
-  end
-  local start_row, start_col = unpack(cursor)
-  local end_cursor =
-    terminal_buffer.location_from_offset(target, cursor, #M.read_command_from_buffer(target))
-  return {
-    start_row = start_row,
-    start_col = start_col,
-    end_row = end_cursor[1],
-    end_col = end_cursor[2],
-  }
-end
-
----Normalize Vim's cursor form for a command ending at the terminal wrap edge.
----After linewise operators Vim may place the cursor at `{end_row + 1, 0}`.
----For an integrated command ending exactly at `{end_row, #line}`, that is the same
----visual position as command end and must stay inside the editable zone.
----@param buf integer
----@param cursor integer[] 1-based row, 0-based column
----@param zone? { start_row: integer, start_col: integer, end_row: integer, end_col: integer }
----@return integer[] cursor
-local function canonicalize_cursor_at_wrapped_command_end(buf, cursor, zone)
-  zone = zone or M.get_editable_zone(buf)
-  if not zone or cursor[2] ~= 0 or cursor[1] ~= zone.end_row + 1 then
-    return cursor
-  end
-  local end_line = vim.api.nvim_buf_get_lines(buf, zone.end_row - 1, zone.end_row, false)[1] or ""
-  if zone.end_col == #end_line then
-    return { zone.end_row, zone.end_col }
-  end
-  return cursor
-end
-
----Check if the current cursor is inside the editable command zone.
----@param buf? integer
----@param cursor? integer[]
----@return boolean
-function M.is_cursor_in_editable_zone(buf, cursor)
-  local zone = M.get_editable_zone(buf)
-  if not zone then
-    return false
-  end
-  local row, col = unpack(
-    canonicalize_cursor_at_wrapped_command_end(buf, cursor or vim.api.nvim_win_get_cursor(0), zone)
-  )
-  if row < zone.start_row or row > zone.end_row then
-    return false
-  end
-  if row == zone.start_row and col < zone.start_col then
-    return false
-  end
-  return row ~= zone.end_row or col <= zone.end_col
-end
-
 ---@param cursor integer[]
 ---@param min_cursor integer[]
 ---@param max_cursor integer[]
@@ -157,7 +97,7 @@ end
 ---@param command_length? integer
 ---@return integer[] cursor
 local function clamp_cursor_to_editable_zone(buf, cursor, command_length)
-  local zone = M.get_editable_zone(buf)
+  local zone = editable_zone.get(buf)
   if not zone then
     return cursor
   end
@@ -197,9 +137,9 @@ end
 local function refresh_integrated_state(buf, cursor, win)
   win = win or 0
   local current_cursor = vim.api.nvim_win_get_cursor(win)
-  cursor = canonicalize_cursor_at_wrapped_command_end(buf, cursor)
+  cursor = editable_zone.canonicalize_cursor_at_wrapped_command_end(buf, cursor)
   move_cursor_if_needed(win, current_cursor, cursor)
-  vim.bo[buf].modifiable = M.is_cursor_in_editable_zone(buf, cursor)
+  vim.bo[buf].modifiable = editable_zone.contains(buf, cursor)
   if vim.bo[buf].modifiable then
     M.buffers[buf].last_integrated_cursor = vim.deepcopy(cursor)
   end
@@ -321,6 +261,7 @@ end
 ---@param after boolean paste after cursor when true, before cursor when false
 local function paste_register_over_visual_selection(after)
   local register = vim.v.register
+  -- TODO: check if this is needed, diverges from normal behaviour
   local text = vim.fn.getreg(register):gsub("%s+$", "")
   local register_type = vim.fn.getregtype(register)
   delete_visual_selection_then(function()

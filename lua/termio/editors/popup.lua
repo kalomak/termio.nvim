@@ -1,5 +1,6 @@
 local config = require("termio.config")
 local autoresize = require("termio.editors.autoresize")
+local editable_zone = require("termio.editable_zone")
 local fixbuf = require("termio.editors.fixbuf")
 local helpers = require("termio.util.helpers")
 local keymaps = require("termio.util.keymaps")
@@ -108,6 +109,16 @@ function M.write_command(ctx, edit_buf, edit_win, cursor)
     target_cursor = M.cursor_index(edit_buf, edit_win, start_cursor)
   end
   api().write_command(M.command_text(edit_buf, start_cursor), ctx.target_buf, target_cursor)
+  if target_cursor and vim.api.nvim_win_is_valid(ctx.target_win) then
+    vim.api.nvim_win_set_cursor(
+      ctx.target_win,
+      terminal_buffer.location_from_offset(
+        ctx.target_buf,
+        api().command_start_cursor(ctx.target_buf),
+        target_cursor
+      )
+    )
+  end
 end
 
 function M.write_current(buffers, edit_buf)
@@ -353,9 +364,14 @@ function M.apply_keymaps(edit_buf, handlers)
   return group
 end
 
-function M.map_terminal_open(buf, open, opts)
+---Map terminal keys that open a popup editor.
+---@param buf integer Terminal buffer where keymaps are installed.
+---@param group table Buffer-local keymap group receiving the mappings.
+---@param open function Callback that opens the editor for `buf`.
+---@param opts? table Optional mapping settings: `modes`, `stopinsert`, `stopinsert_modes`.
+---@return table
+function M.apply_terminal_open_keymaps(buf, group, open, opts)
   opts = opts or {}
-  local group = opts.group
   local modes = opts.modes or { "t" }
   for _, mode in ipairs(modes) do
     local map = function()
@@ -364,15 +380,72 @@ function M.map_terminal_open(buf, open, opts)
       end
       open({ target_buf = buf, target_win = vim.fn.bufwinid(buf) })
     end
-    if group then
-      group:map(mode, config.options.editor.open, map)
-    else
-      vim.keymap.set(
-        mode,
-        config.options.editor.open,
-        map,
-        { buffer = buf, desc = "Edit terminal command" }
-      )
+    group:map(mode, config.options.editor.open, map)
+  end
+  return group
+end
+
+---Return visual selection offsets relative to the terminal command start.
+---@param buf integer Terminal buffer containing the visual selection.
+---@return { first: integer, last: integer }
+local function terminal_visual_offsets(buf)
+  local command_start = api().command_start_cursor(buf)
+  local range = helpers.visual_range()
+  return {
+    first = terminal_buffer.cursor_index_from_start_cursor(range.first, buf, command_start),
+    last = terminal_buffer.cursor_index_from_start_cursor(range.last, buf, command_start),
+  }
+end
+
+---Restore visual selection in the popup editor from command-relative offsets.
+---@param edit_buf integer Popup prompt buffer receiving the visual selection.
+---@param offsets { first: integer, last: integer } Command-relative selection offsets.
+local function restore_editor_visual_offsets(edit_buf, offsets)
+  local prompt_start = M.prompt_start_cursor(edit_buf)
+  helpers.restore_visual_range({
+    first = terminal_buffer.location_from_offset(edit_buf, prompt_start, offsets.first),
+    last = terminal_buffer.location_from_offset(edit_buf, prompt_start, offsets.last),
+  })
+end
+
+---Map terminal normal/visual keys that open an editor before replaying the key.
+---@param buf integer Terminal buffer where keymaps are installed.
+---@param group table Buffer-local keymap group receiving the mappings.
+---@param open function Callback that opens the editor for `buf`.
+---@param opts? table Reserved for future mapping settings.
+---@return table?
+function M.apply_terminal_open_then_keymaps(buf, group, open, opts)
+  opts = opts or {}
+  for mode, keys in pairs(config.options.editor.popup.open_then_keys or {}) do
+    for _, key in ipairs(keys) do
+      local map_mode = mode
+      local map_key = key
+      local map = function()
+        -- Outside the editable command, keep the terminal's normal key behavior.
+        -- TODO: make this optional, pasting outside is fun too
+        if not editable_zone.contains(buf) then
+          M.feed_key(map_key, map_mode == "n" and "n" or "")
+          return
+        end
+        -- Opening the popup exits visual mode, so capture selection first.
+        local offsets = helpers.is_visual_mode() and terminal_visual_offsets(buf) or nil
+        local edit_buf = open({ target_buf = buf, target_win = vim.fn.bufwinid(buf) })
+        if edit_buf then
+          -- Wait until popup keymaps/window state settle before replaying the key.
+          -- I think this is safe but can add a wait condition for opening the popup if needed.
+          vim.schedule(function()
+            if offsets then
+              -- Restore selection so visual paste replaces the same command text.
+              restore_editor_visual_offsets(edit_buf, offsets)
+              M.feed_key(map_key, "n")
+            else
+              -- `:normal!` preserves Vim's normal paste cursor semantics here.
+              vim.cmd("normal! " .. map_key)
+            end
+          end)
+        end
+      end
+      group:map(map_mode, map_key, map)
     end
   end
   return group
@@ -384,7 +457,9 @@ function M.register_terminal_open(name, open, opts)
     group = vim.api.nvim_create_augroup(name, { clear = true }),
     callback = function(args)
       if helpers.is_enabled_terminal(args.buf) then
-        M.map_terminal_open(args.buf, open, opts)
+        local group = keymaps.group({ buffer = args.buf })
+        M.apply_terminal_open_keymaps(args.buf, group, open, opts)
+        M.apply_terminal_open_then_keymaps(args.buf, group, open, opts)
       end
     end,
   })

@@ -9,6 +9,28 @@ function M.term_codes(keys)
   return vim.api.nvim_replace_termcodes(keys, true, false, true)
 end
 
+---@return boolean
+function M.is_visual_mode()
+  return vim.fn.mode():match("^[vV\22]") ~= nil
+end
+
+---@return { first: [integer, integer], last: [integer, integer] }
+function M.visual_range()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local start = vim.fn.getpos("v")
+  return {
+    first = { start[2], start[3] - 1 },
+    last = cursor,
+  }
+end
+
+---@param range { first: [integer, integer], last: [integer, integer] }
+function M.restore_visual_range(range)
+  vim.api.nvim_win_set_cursor(0, range.first)
+  vim.cmd("normal! v")
+  vim.api.nvim_win_set_cursor(0, range.last)
+end
+
 ---@param buf integer
 ---@return integer
 local function assert_terminal_channel(buf)

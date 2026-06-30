@@ -49,6 +49,80 @@ T["minimal editor"]["opens at shell cursor"] = function()
   MiniTest.expect.equality(child.api.nvim_win_get_cursor(0), { 1, 7 })
 end
 
+T["minimal editor"]["save updates shell cursor"] = function()
+  local terminal_buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("echo lorem ipsum")
+  Helpers.wait_for_read_command(child, terminal_buf, "echo lorem ipsum")
+  local terminal_win = child.api.nvim_get_current_win()
+
+  child.api.nvim_input("<Esc>")
+  Helpers.wait_for_mode(child, "n")
+  child.api.nvim_input("b")
+  MiniTest.expect.equality(child.api.nvim_win_get_cursor(0), { 1, 13 })
+
+  child.api.nvim_input("<Esc>")
+  Helpers.wait_until(child, function()
+    return child.api.nvim_get_current_buf() == terminal_buf
+  end)
+  MiniTest.expect.equality(
+    child.lua_get(
+      [[require("termio.api").cursor_index_in_command(...)]],
+      { terminal_win, terminal_buf }
+    ),
+    11
+  )
+
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  MiniTest.expect.equality(
+    child.lua_get(
+      [[require("termio.api").cursor_index_in_command(...)]],
+      { terminal_win, terminal_buf }
+    ),
+    11
+  )
+end
+
+T["minimal editor"]["normal p opens and pastes in popup"] = function()
+  local terminal_buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("echo hello")
+  Helpers.wait_for_read_command(child, terminal_buf, "echo hello")
+  child.lua([[vim.fn.setreg('"', ' world', 'c')]])
+  child.cmd("stopinsert")
+  Helpers.wait_for_mode(child, "nt")
+  child.api.nvim_input("p")
+  Helpers.wait_until(child, function()
+    return child.api.nvim_get_current_buf() ~= terminal_buf
+  end)
+  Helpers.wait_until(child, function()
+    return child.api.nvim_get_current_line() == "$ echo hello world"
+  end)
+  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ echo hello world")
+end
+
+T["minimal editor"]["visual p opens and pastes in popup"] = function()
+  local terminal_buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("echo hello world")
+  Helpers.wait_for_read_command(child, terminal_buf, "echo hello world")
+  child.lua([[vim.fn.setreg('"', 'goodbye', 'c')]])
+  child.cmd("stopinsert")
+  Helpers.wait_for_mode(child, "nt")
+  child.api.nvim_input("bbvep")
+  Helpers.wait_until(child, function()
+    return child.api.nvim_get_current_buf() ~= terminal_buf
+  end)
+  Helpers.wait_until(child, function()
+    return child.api.nvim_get_current_line() == "$ echo goodbye world"
+  end)
+  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ echo goodbye world")
+end
+
 T["minimal editor"]["clamps cursor after prompt"] = function()
   open_minimal_editor("echo old")
   child.cmd("normal! 0")

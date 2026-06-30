@@ -3,7 +3,7 @@
 > [!NOTE]
 > WIP. Expect bugs.
 
-Edit the terminal like any other text with minimal latency.
+Edit terminal commands however you like.
 
 <img width="1600" height="795" alt="screen-recording-new" src="https://github.com/user-attachments/assets/9e546153-4f5e-4d87-a1c6-18f3a85fa9a3" />
 
@@ -20,7 +20,7 @@ It is easy to add support for other shells as well if needed.
 
 > [!NOTE]
 > Currently not auto-loading shell integration because it seems a bit invasive.
-> The integration scripts force Emacs/default shell key bindings in terminals where they are active.
+> The integration scripts set Emacs/default shell key bindings in terminals where they are active.
 
 <details>
 <summary>Zsh</summary>

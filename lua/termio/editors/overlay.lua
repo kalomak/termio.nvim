@@ -2,13 +2,11 @@ local api = require("termio.api")
 local autoresize = require("termio.editors.autoresize")
 local popup = require("termio.editors.popup")
 local helpers = require("termio.util.helpers")
-local keymaps = require("termio.util.keymaps")
 local config = require("termio.config")
 local state = require("termio.state")
 
 local M = popup.new({
   buffers = {},
-  terminal_keymaps = {},
   toggle = function()
     state.toggle()
   end,
@@ -93,51 +91,12 @@ function M:after_open(ctx, edit_buf, edit_win)
   register_insert_leave_writer(ctx, edit_buf, edit_win)
 end
 
-local function apply_terminal_keymaps(buf)
-  local group = keymaps.group({ buffer = buf })
-  popup.map_terminal_open(
-    buf,
-    M.open,
-    { group = group, modes = { "n", "t" }, stopinsert_modes = { t = true } }
-  )
-  M.terminal_keymaps[buf] = group
-  vim.api.nvim_create_autocmd("BufDelete", {
-    buffer = buf,
-    callback = function()
-      M.terminal_keymaps[buf] = nil
-    end,
-  })
-end
-
 local function open_on_prompt()
   error("termio: editor.popup.open_on_prompt is not implemented")
 end
 
-function M.enable()
-  for _, group in pairs(M.terminal_keymaps) do
-    group:enable()
-  end
-end
-
-function M.disable()
-  for _, group in pairs(M.terminal_keymaps) do
-    group:disable()
-  end
-end
-
 function M.setup()
-  vim.api.nvim_create_autocmd("TermOpen", {
-    group = vim.api.nvim_create_augroup("termio-overlay", { clear = true }),
-    callback = function(args)
-      if helpers.is_enabled_terminal(args.buf) then
-        vim.schedule(function()
-          if vim.api.nvim_buf_is_valid(args.buf) then
-            apply_terminal_keymaps(args.buf)
-          end
-        end)
-      end
-    end,
-  })
+  M:setup_terminal_open("termio-overlay")
   if popup_options().open_on_prompt then
     open_on_prompt()
   end
