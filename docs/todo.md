@@ -1,8 +1,28 @@
 # TODO
 
-## auto-open support
-#feature #popup 
-- see historical impl
+## 'submit strips PS2 continuation prompt' flaky test
+#bug #tests
+- failed in full run once, could not reproduce
+
+## symmetric on last line movements
+#enhancement #popup
+- currently upward movements like k in popup window go to target window
+- downward movements do not
+- not very useful(?) but intuitive
+
+## open on hover
+#feature #popup #overlay
+- so when enter editable area, open editor
+- makes open on prompt not needed
+- makes open passthrough keys not needed(?)
+    - should still keep old functionality
+
+## cursor placement should be updated in the target terminal
+- e.g. if you spam cr in overlay, the cursor stays in some earlier row in the target
+
+## research if TextChangedT could improve wait_for_command
+#enhancement
+
 
 ## cleanup for release
 #chore
@@ -36,6 +56,16 @@
 ## sync overlay more often
 #feature #enhancement
 - can get rid of some jitter
+
+## open on prompt support
+#feature #popup 
+- see stash
+
+## emit prompt from shell integration
+#feature #auto-open #enhancement
+- faster than reading from buffer after render
+- maybe causes issues if prompt marker comes before the command output has rendered?
+- see stash
 
 ## expose status to users
 #feature 

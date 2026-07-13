@@ -49,6 +49,7 @@ M.defaults = {
         winhighlight = nil,
       },
       open_on_prompt = false,
+      open_on_focus = false,
       open_then_keys = { n = { "p", "P" }, x = { "p", "P" } },
       keys = {
         i = {

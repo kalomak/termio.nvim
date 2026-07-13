@@ -1,7 +1,40 @@
 local helpers = require("termio.util.helpers")
+local config = require("termio.config")
 local shell_integration = require("termio.shell_integration")
 
 local M = {}
+
+local function prompt_cursor_is_rendered(buf, cursor)
+  if not vim.api.nvim_buf_is_valid(buf) then
+    return false
+  end
+  local line = vim.api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ""
+  local prompt_end_column_is_rendered = #line >= cursor[2]
+  return prompt_end_column_is_rendered
+end
+
+local function emit_prompt_rendered(buf, cursor)
+  local timeout = config.options.timeouts.render_command
+  local deadline = vim.uv.now() + timeout.limit_ms
+
+  local function check_rendered(delay)
+    vim.defer_fn(function()
+      if not vim.api.nvim_buf_is_valid(buf) then
+        return
+      end
+      if prompt_cursor_is_rendered(buf, cursor) then
+        vim.api.nvim_exec_autocmds("User", {
+          pattern = "TermioPromptRendered",
+          data = { buf = buf, cursor = cursor },
+        })
+      elseif vim.uv.now() < deadline then
+        check_rendered(timeout.interval_ms)
+      end
+    end, delay)
+  end
+
+  check_rendered(0)
+end
 
 ---@param sequence string
 ---@return { command: string, cursor: integer }?
@@ -53,6 +86,7 @@ function M.handle_term_request(buffers, args)
     state.active_prompt_source = "osc133"
     state.active_prompt_process = nil
     state.shell_phase = "input"
+    emit_prompt_rendered(args.buf, args.data.cursor)
     return true
   end
   if sequence:match("^\27]133;C") then

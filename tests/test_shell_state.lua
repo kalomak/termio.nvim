@@ -1,6 +1,7 @@
 local T = MiniTest.new_set()
 
 local function state_for(sequence, cursor)
+  require("termio.config").setup()
   local shell_state = require("termio.shell_state")
   local buffers = {}
   local buf = vim.api.nvim_get_current_buf()
@@ -18,6 +19,54 @@ T["OSC133 prompt end activates prompt"] = function()
   MiniTest.expect.equality(state.active_prompt_cursor, { 2, 4 })
   MiniTest.expect.equality(state.active_prompt_source, "osc133")
   MiniTest.expect.equality(state.shell_phase, "input")
+end
+
+T["OSC133 prompt end emits prompt rendered event"] = function()
+  local event_buf
+  vim.api.nvim_create_autocmd("User", {
+    pattern = "TermioPromptRendered",
+    once = true,
+    callback = function(args)
+      event_buf = args.data.buf
+    end,
+  })
+
+  local buf = vim.api.nvim_get_current_buf()
+  state_for("\027]133;B\007", { 1, 0 })
+
+  -- TODO: no fixed waits
+  vim.wait(100, function()
+    return event_buf ~= nil
+  end)
+  MiniTest.expect.equality(event_buf, buf)
+end
+
+T["OSC133 prompt rendered event waits for rendered cursor"] = function()
+  local event_buf
+  vim.api.nvim_create_autocmd("User", {
+    pattern = "TermioPromptRendered",
+    once = true,
+    callback = function(args)
+      event_buf = args.data.buf
+    end,
+  })
+
+  local buf = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
+  state_for("\027]133;B\007", { 1, 4 })
+
+  -- TODO: no fixed waits
+  vim.wait(10, function()
+    return event_buf ~= nil
+  end)
+  MiniTest.expect.equality(event_buf, nil)
+
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "$ ab" })
+  -- TODO: no fixed waits
+  vim.wait(100, function()
+    return event_buf ~= nil
+  end)
+  MiniTest.expect.equality(event_buf, buf)
 end
 
 T["OSC133 preexec clears active prompt"] = function()

@@ -43,6 +43,7 @@ scenario.setup({
 })
 
 vim.keymap.set("n", "<leader>g", "<Cmd>TermioReadCommand<CR>")
+vim.keymap.set("n", "<leader>g?", "<Cmd>map<CR>", { desc = "Show keymaps" })
 vim.keymap.set("n", "<leader>w", write_long_lorem_with_zle)
 vim.keymap.set({ "n", "v", "x" }, "K", "{")
 vim.keymap.set({ "n", "v", "x" }, "J", "}")

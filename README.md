@@ -150,6 +150,8 @@ require("termio").setup({
       },
       -- Open popup automatically when a fresh prompt is detected.
       open_on_prompt = false,
+      -- Open popup when the cursor focuses the editable shell command.
+      open_on_focus = false,
       -- Popup-local action keymaps by mode.
       -- down/up move focus to the terminal while keeping popup open.
       keys = {

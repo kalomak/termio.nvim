@@ -426,7 +426,12 @@ Helpers.open_shell = function(child, prompt, shell)
   local buf = child.api.nvim_get_current_buf()
   -- Terminal startup is async; wait until the test shell emitted its prompt.
   Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_line():match("^" .. vim.pesc(prompt) .. "%s*$") ~= nil
+    for _, line in ipairs(child.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+      if line:match("^" .. vim.pesc(prompt) .. "%s*$") then
+        return true
+      end
+    end
+    return false
   end)
   Helpers.wait_for_shell_integration(child, buf)
   return buf

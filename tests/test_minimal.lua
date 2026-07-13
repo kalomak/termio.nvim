@@ -227,6 +227,27 @@ T["minimal editor"]["search keys pass through to terminal"] = function()
   child.api.nvim_input("<Esc>")
 end
 
+T["minimal editor"]["search match in command reopens editor"] = function()
+  child.lua([[
+    require("termio").setup({
+      editor = { type = "minimal", popup = { open_on_focus = true } },
+    })
+  ]])
+  local terminal_buf = open_minimal_editor("echo hello hello")
+  child.api.nvim_input("?")
+  Helpers.wait_until(child, function()
+    return child.api.nvim_get_current_buf() == terminal_buf and child.fn.getcmdtype() == "?"
+  end)
+  child.api.nvim_input("hello<CR>")
+  Helpers.wait_until(child, function()
+    return child.api.nvim_get_current_buf() ~= terminal_buf
+  end)
+  MiniTest.expect.equality(child.bo.buftype, "prompt")
+  MiniTest.expect.equality(child.api.nvim_win_get_cursor(0), { 1, 13 })
+  child.api.nvim_input("cegoodbye<Esc>")
+  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ echo hello goodbye")
+end
+
 T["minimal editor"]["redirects opened files to target window"] = function()
   local _, terminal_win = open_minimal_editor("echo old")
   child.cmd("edit README.md")

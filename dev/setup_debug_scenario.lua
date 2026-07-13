@@ -9,9 +9,11 @@ M.debug_tools = debug_tools
 
 local function set_keymaps(extra_keymaps)
   vim.keymap.set("n", "<leader>q", "<Cmd>qa!<CR>")
-  vim.keymap.set("n", "<leader>c", function()
-    vim.fn.setreg("+", vim.fn.execute("messages"))
-  end)
+  vim.keymap.set({ "n", "i", "t" }, "<M-q><M-q>", "<Cmd>qall!<CR>")
+  vim.keymap.set("n", "<leader>mc", function()
+    vim.fn.setreg("+", vim.api.nvim_exec2("messages", { output = true }).output)
+    vim.notify("Copied messages")
+  end, { desc = "Copy messages" })
   for _, keymap in ipairs(extra_keymaps or {}) do
     vim.keymap.set(keymap[1], keymap[2], keymap[3])
   end

@@ -4,6 +4,7 @@ local editable_zone = require("termio.editable_zone")
 local fixbuf = require("termio.editors.fixbuf")
 local helpers = require("termio.util.helpers")
 local keymaps = require("termio.util.keymaps")
+local open_on_focus = require("termio.editors.open_on_focus")
 local terminal_buffer = require("termio.terminal_buffer")
 
 local M = {}
@@ -21,8 +22,9 @@ end
 
 function M:build_context(ctx)
   ctx = ctx or {}
-  local target_buf = helpers.current_buf(ctx.target_buf)
-  return { target_buf = target_buf, target_win = ctx.target_win or vim.fn.bufwinid(target_buf) }
+  ctx.target_buf = helpers.current_buf(ctx.target_buf)
+  ctx.target_win = ctx.target_win or vim.fn.bufwinid(ctx.target_buf)
+  return ctx
 end
 
 local function api()
@@ -54,6 +56,7 @@ function M:prepare_data(ctx)
   return {
     prompt = prompt,
     shell = shell,
+    cursor = ctx.cursor or shell.cursor,
     lines = M.command_lines(prompt .. shell.command),
   }
 end
@@ -229,7 +232,9 @@ function M.action_handlers(opts)
       vim.cmd("normal! gj")
     end,
     up = function()
-      if vim.api.nvim_get_mode().mode == "n" and M.is_first_visual_line() then
+      local mode = vim.api.nvim_get_mode().mode
+      local first_visual_line = M.is_first_visual_line()
+      if mode == "n" and first_visual_line then
         pass_through_normal("k")
         return
       end
@@ -275,7 +280,7 @@ function M:open(ctx)
   local data = self:prepare_data(ctx)
   local edit_buf, edit_win = self:create_editor_window(ctx, data)
   M.apply_window_style(edit_win)
-  M.set_initial_cursor(edit_buf, edit_win, data.shell.command, data.shell.cursor)
+  M.set_initial_cursor(edit_buf, edit_win, data.shell.command, data.cursor)
   self:register({
     edit_buf = edit_buf,
     edit_win = edit_win,
@@ -453,19 +458,25 @@ end
 
 function M.register_terminal_open(name, open, opts)
   opts = opts or {}
+  local group = vim.api.nvim_create_augroup(name, { clear = true })
   vim.api.nvim_create_autocmd("TermOpen", {
-    group = vim.api.nvim_create_augroup(name, { clear = true }),
+    group = group,
     callback = function(args)
       if helpers.is_enabled_terminal(args.buf) then
-        local group = keymaps.group({ buffer = args.buf })
-        M.apply_terminal_open_keymaps(args.buf, group, open, opts)
-        M.apply_terminal_open_then_keymaps(args.buf, group, open, opts)
+        local keymap_group = keymaps.group({ buffer = args.buf })
+        M.apply_terminal_open_keymaps(args.buf, keymap_group, open, opts)
+        M.apply_terminal_open_then_keymaps(args.buf, keymap_group, open, opts)
+        if config.options.editor.popup.open_on_focus then
+          open_on_focus.register(args.buf, open, opts.buffers)
+        end
       end
     end,
   })
 end
 
 function M:setup_terminal_open(name, opts)
+  opts = opts or {}
+  opts.buffers = self.buffers
   M.register_terminal_open(name, function(ctx)
     return self.open(ctx)
   end, opts)
