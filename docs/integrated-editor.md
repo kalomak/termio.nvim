@@ -75,4 +75,4 @@ BLOCKED, can't insert in terminal buffer without sending chars to shell.
 ### Scope for first cut
 - Prefer current prompt row editing first
 - Wrapped display lines are fine
-- Multiline continuation prompts may need a second pass
+- The latest OSC 133 prompt-end marker starts the editable zone

@@ -61,10 +61,7 @@ local function get_cursor_index_in_command(buf)
 end
 
 local function read_integrated_command(buf)
-  return child.lua_get(
-    [[require("termio.editors.integrated").read_command_from_buffer(...)]],
-    { buf }
-  )
+  return child.lua_get([[require("termio").read_command(..., nil, "buffer")]], { buf })
 end
 
 local function open_python_repl(opts)
@@ -269,15 +266,17 @@ T["integrated edit"]["submit runs command in normal mode and enters insert mode"
   Helpers.wait_for_mode(child, "t")
 end
 
-T["integrated edit"]["submit strips PS2 continuation prompt"] = function()
+T["integrated edit"]["submit runs latest prompt segment"] = function()
   if vim.env.TERMIO_TEST_SHELL == "fish" then
-    MiniTest.skip("fish uses a different continuation prompt")
+    MiniTest.skip("fish does not emit continuation OSC markers")
   end
   local buf = Helpers.open_shell(child)
   child.api.nvim_input("i")
   Helpers.wait_for_mode(child, "t")
-  child.api.nvim_input("echo \\<CR>hello")
-  Helpers.wait_for_read_command(child, buf, "echo \\> hello")
+  child.api.nvim_input("echo \\<CR>")
+  Helpers.wait_for_read_command(child, buf, "")
+  child.api.nvim_input("hello")
+  Helpers.wait_for_read_command(child, buf, "hello")
   Helpers.open_editable_normal_mode(child, buf)
   child.api.nvim_input("<CR>")
   Helpers.wait_until(child, function()

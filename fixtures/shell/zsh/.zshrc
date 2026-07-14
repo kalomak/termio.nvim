@@ -9,7 +9,7 @@ if [[ -z "${__TERMIO_TEST_MARKERS_LOADED:-}" ]]; then
       printf '\033]133;D;%s\a' "$exit_status"
     fi
     __termio_test_prompt_seen=1
-    printf '\033]133;A\a'
+    printf '\033]133;A;cl=line\a'
   }
 
   termio_test_command_start_marker() {
@@ -19,6 +19,7 @@ if [[ -z "${__TERMIO_TEST_MARKERS_LOADED:-}" ]]; then
   precmd_functions+=(termio_test_prompt_marker)
   preexec_functions+=(termio_test_command_start_marker)
   PS1="${TERMIO_TEST_PROMPT}"$'%{\033]133;B\a%}'
+  PS2=$'%{\033]133;A;k=s\a%}'"${PS2}"$'%{\033]133;B\a%}'
 fi
 
 source "$TERMIO_REPO_ROOT/shell/termio.zsh"

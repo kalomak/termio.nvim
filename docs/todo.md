@@ -1,9 +1,5 @@
 # TODO
 
-## 'submit strips PS2 continuation prompt' flaky test
-#bug #tests
-- failed in full run once, could not reproduce
-
 ## symmetric on last line movements
 #enhancement #popup
 - currently upward movements like k in popup window go to target window
@@ -42,13 +38,6 @@
 - whatever it is, it happened in the last few commits
 - maybe it was zsh vi mode?
 
-## add support for reading multi-line commands via shell integration
-#feature #api #shell-integration
-- fish supports natively
-- zsh support PREBUFFER
-- bash does not seem to support
-- this would make reading multi-line commands with completion
-
 ## edits with modifiable and non-modifiable should clamp to zone
 #feature #integrated #enhancement
 - at least if trailing non-mod zone since it actually happens quite often on accident
@@ -77,4 +66,3 @@
 ## add simple markers to tab complete
 #feature #maybe
 - not really needed(?) now since we read from zsh shell directly
-

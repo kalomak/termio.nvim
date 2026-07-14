@@ -1,14 +1,7 @@
 local api = require("termio.api")
-local config = require("termio.config")
-local helpers = require("termio.util.helpers")
 local terminal_buffer = require("termio.terminal_buffer")
 
 local M = {}
-
-local function read_command_from_buffer(buf)
-  local rows = terminal_buffer.command_rows(buf, api.command_start_cursor(buf))
-  return helpers.command_from_rows(rows, config.options.clear_interrupt_replace_patterns)
-end
 
 ---Return the editable command zone in the terminal buffer.
 ---@param buf? integer
@@ -20,8 +13,8 @@ function M.get(buf)
     return nil
   end
   local start_row, start_col = unpack(cursor)
-  local end_cursor =
-    terminal_buffer.location_from_offset(target, cursor, #read_command_from_buffer(target))
+  local command = terminal_buffer.command_text(target, cursor)
+  local end_cursor = terminal_buffer.location_from_offset(target, cursor, #command)
   return {
     start_row = start_row,
     start_col = start_col,

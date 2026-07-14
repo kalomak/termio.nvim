@@ -87,9 +87,9 @@ end
 
 T["write_command()"] = MiniTest.new_set()
 
-local function skip_fish_ps2()
+local function skip_fish_continuation_marker()
   if vim.env.TERMIO_TEST_SHELL == "fish" then
-    MiniTest.skip("fish uses a different continuation prompt")
+    MiniTest.skip("fish does not emit continuation OSC markers")
   end
 end
 
@@ -101,13 +101,15 @@ T["write_command()"]["empty command after cursor stays empty"] = function()
   Helpers.wait_for_read_command(child, buf, "")
 end
 
-T["write_command()"]["replaces PS2 continuation command"] = function()
-  skip_fish_ps2()
+T["write_command()"]["replaces latest prompt segment"] = function()
+  skip_fish_continuation_marker()
   local buf = Helpers.open_shell(child)
   child.api.nvim_input("i")
   Helpers.wait_for_mode(child, "t")
-  child.api.nvim_input("echo \\<CR>hello")
-  Helpers.wait_for_read_command(child, buf, "echo \\> hello")
+  child.api.nvim_input("echo \\<CR>")
+  Helpers.wait_for_read_command(child, buf, "")
+  child.api.nvim_input("hello")
+  Helpers.wait_for_read_command(child, buf, "hello")
   child.lua([[require("termio").write_command("echo done", ...)]], { buf })
   Helpers.wait_for_read_command(child, buf, "echo done")
 end
@@ -124,13 +126,15 @@ T["clear_command()"]["clears current command"] = function()
   Helpers.wait_for_read_command(child, buf, "")
 end
 
-T["clear_command()"]["clears PS2 continuation command"] = function()
-  skip_fish_ps2()
+T["clear_command()"]["clears latest prompt segment"] = function()
+  skip_fish_continuation_marker()
   local buf = Helpers.open_shell(child)
   child.api.nvim_input("i")
   Helpers.wait_for_mode(child, "t")
-  child.api.nvim_input("echo \\<CR>hello")
-  Helpers.wait_for_read_command(child, buf, "echo \\> hello")
+  child.api.nvim_input("echo \\<CR>")
+  Helpers.wait_for_read_command(child, buf, "")
+  child.api.nvim_input("hello")
+  Helpers.wait_for_read_command(child, buf, "hello")
   child.lua([[require("termio").clear_command(...)]], { buf })
   Helpers.wait_for_read_command(child, buf, "")
 end

@@ -41,22 +41,6 @@ local function read_raw_state(target, win, timeout_ms, backend)
   return terminal_buffer.read_state(M.buffers, target, win, prompt_end_cursor)
 end
 
----@param target integer
----@param keys string
----@param wait_for_render? boolean
----@return boolean
-local function send_clear_command(target, keys, wait_for_render)
-  helpers.send_keys(keys, target)
-  if wait_for_render == false then
-    return true
-  end
-  local rendered = terminal_buffer.wait_until_command_is_rendered(target, function()
-    -- <C-c> can create a new prompt while polling, so re-read cursor
-    return M.command_start_cursor(target)
-  end, "", true)
-  return rendered
-end
-
 ---Update cached prompt range from configured prompt patterns.
 ---@param buf? integer
 function M.update_prompt_range(buf)
@@ -139,15 +123,18 @@ function M.clear_command(buf, opts)
   opts = opts or {}
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
-  local patterns = config.options.clear_interrupt_replace_patterns
-  local raw_state = read_raw_state(target, nil, nil, "buffer")
-  local command = table.concat(raw_state.rows, "")
-  local replaced_command = helpers.command_from_rows(raw_state.rows, patterns)
-  local use_interrupt = replaced_command ~= command
-  local cleared =
-    send_clear_command(target, use_interrupt and "<C-c>" or "<C-e><C-u>", opts.wait_for_render)
-  if not cleared and not use_interrupt then
-    cleared = send_clear_command(target, "<C-c>")
+  helpers.send_keys("<C-e><C-u>", target)
+  if can_send_shell_integration_signal(target) then
+    shell_integration.redraw_after_pty_write(target)
+  end
+  local cleared = true
+  if opts.wait_for_render ~= false then
+    cleared = terminal_buffer.wait_until_command_is_rendered(
+      target,
+      M.command_start_cursor(target),
+      "",
+      true
+    )
   end
   if not cleared then
     vim.notify("termio: failed to clear command", vim.log.levels.WARN)

@@ -21,6 +21,20 @@ T["OSC133 prompt end activates prompt"] = function()
   MiniTest.expect.equality(state.shell_phase, "input")
 end
 
+T["latest OSC133 prompt end becomes active prompt"] = function()
+  local shell_state = require("termio.shell_state")
+  local state = state_for("\027]133;B\007", { 1, 2 })
+  local buf = vim.api.nvim_get_current_buf()
+
+  shell_state.handle_term_request({ [buf] = state }, {
+    buf = buf,
+    data = { sequence = "\027]133;B\007", cursor = { 2, 4 } },
+  })
+
+  MiniTest.expect.equality(state.prompt_end_cursor, { 2, 4 })
+  MiniTest.expect.equality(state.active_prompt_cursor, { 2, 4 })
+end
+
 T["OSC133 prompt end emits prompt rendered event"] = function()
   local event_buf
   vim.api.nvim_create_autocmd("User", {

@@ -40,17 +40,9 @@ local function ensure_command_start_cursor(buf)
   return has_command_start_cursor(buf)
 end
 
----Read the integrated draft command from the terminal buffer.
----@param buf integer
----@return string
-function M.read_command_from_buffer(buf)
-  local rows = terminal_buffer.command_rows(buf, api.command_start_cursor(buf))
-  return helpers.command_from_rows(rows, config.options.clear_interrupt_replace_patterns)
-end
-
 local function read_editor_state(buf, win)
   return {
-    command = M.read_command_from_buffer(buf),
+    command = terminal_buffer.command_text(buf, api.command_start_cursor(buf)),
     cursor = api.cursor_index_in_command(win, buf),
   }
 end
@@ -309,7 +301,7 @@ local function keep_cursor_at_command_offset(buf, offset)
 end
 
 local function command_end_offset(buf)
-  return #M.read_command_from_buffer(buf)
+  return #terminal_buffer.command_text(buf, api.command_start_cursor(buf))
 end
 
 local function add_mark_at_command_offset(buf, offset)
@@ -369,7 +361,7 @@ end
 
 function M.apply_yank_operator()
   local buf = vim.api.nvim_get_current_buf()
-  local command = M.read_command_from_buffer(buf)
+  local command = terminal_buffer.command_text(buf, api.command_start_cursor(buf))
   local start_offset = command_offset_at_operator_start(buf)
   -- `]` points at the last included byte; convert it to an exclusive end.
   local end_offset = get_shell_cursor_offset(buf, vim.api.nvim_buf_get_mark(buf, "]")) + 1

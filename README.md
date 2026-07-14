@@ -106,8 +106,6 @@ require("termio").setup({
   -- Vim regex replacements as { pattern, replacement } pairs.
   read_replace_patterns = {},
   write_replace_patterns = {},
-  -- Lua pattern replacements. Changing commands are cleared with C-c instead of C-e C-u.
-  clear_interrupt_replace_patterns = { { "\\$", "" }, { "^> ", "" } },
   editor = {
     -- Bundled editor to use. nil gives API-only mode.
     type = "integrated", -- "integrated" | "minimal" | "overlay" | nil
@@ -226,8 +224,8 @@ User commands target the current terminal buffer.
 
 ## Terms
 
-- Command: full integrated command text, can contain multiple lines.
-- Command row: one line in a command.
+- Command: editable text after the latest prompt marker.
+- Command row: one terminal display row occupied by a command.
 - Prompt: shell text shown before the command.
 - OSC133: terminal escape sequence used to find where the prompt ends and command starts.
 
