@@ -64,7 +64,11 @@ end
 
 local function test_shell_command(shell)
   local commands = {
-    zsh = shell_command({ env = { "env", "PS1=$ " }, shell = shell, argv = { "-d", "-f" } }),
+    zsh = shell_command({
+      env = { "env", "PS1=$ ", "EDITOR=emacs", "VISUAL=emacs" },
+      shell = shell,
+      argv = { "-d", "-f" },
+    }),
     bash = shell_command({
       env = { "env", "PS1=$ " },
       shell = shell,

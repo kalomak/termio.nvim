@@ -35,10 +35,10 @@ local function get_log_path()
 end
 
 function M.collect()
-  local api = _G.termio_debug and _G.termio_debug.standalone or require("termio.api")
-  local cache = api.terminals[vim.api.nvim_get_current_buf()]
+  local termio = require("termio")
+  local cache = termio.terminals[vim.api.nvim_get_current_buf()]
   if not cache then
-    local _, first_cache = next(api.terminals)
+    local _, first_cache = next(termio.terminals)
     cache = first_cache
   end
   cache = cache or { command = {} }
@@ -47,7 +47,7 @@ function M.collect()
     channel = vim.bo[cache.target_buf].channel
   end
   if cache.target_win and vim.api.nvim_win_is_valid(cache.target_win) then
-    terminal_text = table.concat(api.read_terminal_state(cache).lines, "\n")
+    terminal_text = table.concat(termio.read_terminal_state(cache).lines, "\n")
   end
   local editor_text, editor_cursor = "-", "-"
   if cache.edit_buf and vim.api.nvim_buf_is_valid(cache.edit_buf) then
@@ -56,14 +56,8 @@ function M.collect()
   if cache.edit_win and vim.api.nvim_win_is_valid(cache.edit_win) then
     editor_cursor = vim.api.nvim_win_get_cursor(cache.edit_win)
   end
-  local config = require("termio.config")
-  local editor = (config.options or config.defaults).editor
   return {
-    options = vim.tbl_extend(
-      "keep",
-      api.options,
-      { key = editor.open, filetype = editor.filetype }
-    ),
+    options = termio.options,
     cache = cache,
     channel = channel,
     terminal_text = terminal_text,
@@ -76,10 +70,9 @@ function M.render_lines(snapshot)
   local cache = snapshot.cache
   return {
     string.format(
-      "probe: mode=%s key=%s filetype=%s poll=%sms timeout=%sms",
+      "probe: mode=%s key=%s poll=%sms timeout=%sms",
       vim.api.nvim_get_mode().mode,
       snapshot.options.key,
-      snapshot.options.filetype,
       snapshot.options.poll_ms,
       snapshot.options.timeout_ms
     ),

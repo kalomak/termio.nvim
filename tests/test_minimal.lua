@@ -6,7 +6,7 @@ local T = MiniTest.new_set({
     pre_case = function()
       child.setup()
       child.set_size(24, 80)
-      child.lua([[require("termio").setup({ editor = { type = "minimal" } })]])
+      child.lua([[require("termio").setup()]])
     end,
     post_once = child.stop,
   },
@@ -74,7 +74,7 @@ end
 T["handles a cached prompt row below the current command"] = function()
   open_shell("echo old")
   local terminal_buf = child.api.nvim_get_current_buf()
-  child.lua([[require("termio.api").get_cache(...).prompt_row = 999]], { terminal_buf })
+  child.lua([[require("termio").get_cache(...).prompt_row = 999]], { terminal_buf })
   child.api.nvim_input("<Esc>")
   Helpers.wait_until(child, function()
     return child.api.nvim_get_option_value("buftype", { buf = 0 }) == "prompt"
@@ -90,6 +90,37 @@ T["reads a 300-word wrapped command on first open"] = function()
   local command = table.concat(words, " ")
   open_popup(command)
   MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ " .. command)
+end
+
+T["positions the popup across the command row"] = function()
+  local terminal_buf = open_popup("echo old")
+  local position = child.lua_get(
+    [[(function(buf)
+    local cache = require("termio").get_cache(buf)
+    local command = vim.fn.screenpos(cache.target_win, cache.command_start[1], cache.command_start[2] + 1)
+    local window = vim.fn.win_screenpos(cache.target_win)
+    local config = vim.api.nvim_win_get_config(cache.edit_win)
+    return { config.anchor, config.row, command.row - window[1], config.col, config.width,
+      vim.api.nvim_win_get_width(cache.target_win), config.border }
+  end)(...)]],
+    { terminal_buf }
+  )
+  MiniTest.expect.equality(
+    position,
+    { "NW", position[3], position[3], 0, position[6], position[6], "none" }
+  )
+end
+
+T["disables and enables terminal mappings"] = function()
+  open_shell("")
+  MiniTest.expect.equality(child.lua_get([[vim.fn.maparg("<Esc>", "t", false, true).buffer]]), 1)
+  child.lua([[require("termio").disable()]])
+  MiniTest.expect.equality(
+    child.lua_get([[vim.fn.empty(vim.fn.maparg("<Esc>", "t", false, true))]]),
+    1
+  )
+  child.lua([[require("termio").enable()]])
+  MiniTest.expect.equality(child.lua_get([[vim.fn.maparg("<Esc>", "t", false, true).buffer]]), 1)
 end
 
 return T

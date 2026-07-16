@@ -5,7 +5,7 @@ local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
       child.setup()
-      child.lua([[require("termio").setup({ editor = { type = "minimal" } })]])
+      child.lua([[require("termio").setup()]])
       child.cmd([[terminal env PS1='$ ' zsh -df]])
       Helpers.wait_until(child, function()
         return child.api.nvim_get_current_line() == "$ "
@@ -22,7 +22,7 @@ T["reads command text and cursor without shell integration"] = function()
   Helpers.wait_until(child, function()
     return child.api.nvim_win_get_cursor(0)[2] == 7
   end)
-  child.lua([[require("termio.api").read(function(command) ProbeCommand = command end)]])
+  child.lua([[require("termio").read(function(command) ProbeCommand = command end)]])
   Helpers.wait_until(child, function()
     return child.lua_get([[ProbeCommand ~= nil]])
   end)

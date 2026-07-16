@@ -1,5 +1,4 @@
 local root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")
-local debug_options = dofile(root .. "/dev/debug_options.lua")
 
 local M = {}
 
@@ -19,8 +18,7 @@ function M.setup(opts)
   if opts.before_setup then
     opts.before_setup()
   end
-  local options = debug_options.build()
-  require("termio").setup(options)
+  require("termio").setup()
 end
 
 return M
