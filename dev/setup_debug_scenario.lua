@@ -67,7 +67,13 @@ local function test_shell_command(shell)
   local shell_fixtures = repo_root .. "/fixtures/shell"
   local commands = {
     zsh = shell_command({
-      env = { "env", "ZDOTDIR=" .. shell_fixtures .. "/zsh", "TERMIO_REPO_ROOT=" .. repo_root },
+      env = {
+        "env",
+        "EDITOR=emacs",
+        "VISUAL=emacs",
+        "ZDOTDIR=" .. shell_fixtures .. "/zsh",
+        "TERMIO_REPO_ROOT=" .. repo_root,
+      },
       shell = shell,
       argv = { "-d", "-i" },
     }),
