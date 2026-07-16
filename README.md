@@ -194,11 +194,25 @@ Currently includes 3 bundled 'editors' that use the API.
 - Good: No syncing concerns. Simple. More control, e.g., completions.
 - Bad: Separate window. Less seamless than editing in-place.
 
+<details>
+<summary>Demo</summary>
+  
+<img width="900" height="407" alt="centered" src="https://github.com/user-attachments/assets/1d477303-9fb8-4e0a-ba22-78dc5f90a8a6" />
+
+</details>
+
 #### `overlay`
 
-- What: Same as popup, but opens the window where the command is.
+- What: Same as centered, but opens the window where the command is.
 - Good: Bit more seamless than centered.
 - Bad: More window/focus handling complexity.
+
+<details>
+<summary>Demo</summary>
+
+<img width="900" height="407" alt="overlay" src="https://github.com/user-attachments/assets/8b91b5fd-bd48-4b85-acd5-6b1ba3b31489" />
+
+</details>
 
 ## API
 
