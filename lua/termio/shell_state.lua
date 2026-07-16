@@ -78,9 +78,6 @@ function M.handle_term_request(buffers, args)
     return true
   end
   if sequence:match("^\27]133;B") then
-    if state.shell_phase == "input" then
-      return true
-    end
     state.prompt_end_cursor = args.data.cursor
     state.active_prompt_cursor = args.data.cursor
     state.active_prompt_source = "osc133"
