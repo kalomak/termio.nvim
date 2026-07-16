@@ -108,7 +108,7 @@ require("termio").setup({
   write_replace_patterns = {},
   editor = {
     -- Bundled editor to use. nil gives API-only mode.
-    type = "integrated", -- "integrated" | "minimal" | "overlay" | nil
+    type = "integrated", -- "integrated" | "centered" | "overlay" | nil
     -- Filetype assigned to bundled editor buffers.
     filetype = "bash",
     -- Vim regex matched against terminal buffer names before enabling editor keymaps.
@@ -188,17 +188,16 @@ Currently includes 3 bundled 'editors' that use the API.
 - Good: No separate window, edit terminal command like any other text.
 - Bad: Needs to fight with the shell process over the control of the terminal buffer. Needs to sync often, so most jittery. Most likely to have bugs.
 
-#### `minimal`
+#### `centered`
 
-- What: Opens a popup for editing the current command.
+- What: Opens a centered popup for editing the current command.
 - Good: No syncing concerns. Simple. More control, e.g., completions.
 - Bad: Separate window. Less seamless than editing in-place.
-- Note: Was meant to be minimal.
 
 #### `overlay`
 
 - What: Same as popup, but opens the window where the command is.
-- Good: Bit more seamless than minimal.
+- Good: Bit more seamless than centered.
 - Bad: More window/focus handling complexity.
 
 ## API
@@ -231,7 +230,7 @@ User commands target the current terminal buffer.
 
 ## Completions
 
-Bundled editors set `vim.b.termio_editor` to `"minimal"`, `"overlay"`, or `"integrated"`.
+Bundled editors set `vim.b.termio_editor` to `"centered"`, `"overlay"`, or `"integrated"`.
 Use that marker to set custom completions for editor buffers.
 
 Blink example:
@@ -240,7 +239,7 @@ Blink example:
 require("blink.cmp").setup({
   sources = {
     default = function()
-      if vim.b.termio_editor == "minimal" or vim.b.termio_editor == "overlay" then
+      if vim.b.termio_editor == "centered" or vim.b.termio_editor == "overlay" then
         return { "path", "snippets" }
       end
       return { "lsp", "path", "snippets", "buffer" }
@@ -270,7 +269,7 @@ termio.nvim/
 │   ├── shell_state.lua          OSC marker state updates
 │   ├── editors/                 bundled terminal-buffer editors
 │   │   ├── integrated.lua         default integrated-buffer editor
-│   │   ├── minimal.lua            scratch-buffer editor
+│   │   ├── centered.lua           centered scratch-buffer editor
 │   │   ├── overlay.lua            floating prompt-buffer editor
 │   │   ├── autoresize.lua         editor window resizing helpers
 │   │   └── fixbuf.lua             fixed editor window helpers

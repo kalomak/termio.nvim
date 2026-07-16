@@ -47,7 +47,7 @@ function M:max_height(ctx)
 end
 
 function M.setup()
-  M:setup_terminal_open("termio-minimal")
+  M:setup_terminal_open("termio-centered")
 end
 
 return M
