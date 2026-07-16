@@ -1,260 +1,95 @@
 local Helpers = require("tests.helpers")
-local T = MiniTest.new_set()
 local child = Helpers.new_child_neovim()
 
-T = MiniTest.new_set({
+local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
-      Helpers.setup_child(child, [[{ editor = { type = "minimal" } }]])
+      child.setup()
       child.set_size(24, 80)
+      child.lua([[require("termio").setup({ editor = { type = "minimal" } })]])
     end,
     post_once = child.stop,
   },
 })
 
-T["minimal editor"] = MiniTest.new_set()
-
-local function open_minimal_editor(command)
-  local terminal_buf = Helpers.open_shell(child)
-  child.api.nvim_input("i")
-  Helpers.wait_for_mode(child, "t")
-  child.api.nvim_input(command)
-  Helpers.wait_for_read_command(child, terminal_buf, command)
-  local terminal_win = child.api.nvim_get_current_win()
-  child.lua([[require("termio.editors.minimal").open({ target_buf = ... })]], { terminal_buf })
-  Helpers.wait_for_mode(child, "n")
-  return terminal_buf, terminal_win
-end
-
-T["minimal editor"]["opens prompt command buffer in float"] = function()
-  local _, terminal_win = open_minimal_editor("echo old")
-  local float_config = child.api.nvim_win_get_config(0)
-  MiniTest.expect.equality(float_config.relative, "win")
-  MiniTest.expect.equality(float_config.win, terminal_win)
-  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ echo old")
-end
-
-T["minimal editor"]["opens at shell cursor"] = function()
-  local terminal_buf = Helpers.open_shell(child)
-  child.api.nvim_input("i")
-  Helpers.wait_for_mode(child, "t")
-  child.api.nvim_input("echo old<Left><Left><Left>")
+local function open_shell(command, left_count)
+  child.cmd([[terminal env PS1='$ ' zsh -df]])
+  local terminal_buf = child.api.nvim_get_current_buf()
   Helpers.wait_until(child, function()
-    local state = child.lua_get([[require("termio.api").read_state(...)]], { terminal_buf })
-    return state.command == "echo old" and state.cursor == 5
+    local lines = child.api.nvim_buf_get_lines(terminal_buf, 0, -1, false)
+    return vim.tbl_contains(lines, "$ ")
   end)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input(command .. ("<Left>"):rep(left_count or 0))
+  Helpers.wait_until(child, function()
+    local text = table.concat(child.api.nvim_buf_get_lines(terminal_buf, 0, -1, false))
+    return text:find(command, 1, true) ~= nil
+  end)
+  if left_count and left_count > 0 then
+    Helpers.wait_until(child, function()
+      return child.api.nvim_win_get_cursor(0)[2] == #"$ " + #command - left_count
+    end)
+  end
+  return terminal_buf
+end
 
-  child.lua([[require("termio.editors.minimal").open({ target_buf = ... })]], { terminal_buf })
-  Helpers.wait_for_mode(child, "n")
+local function open_popup(command, left_count)
+  local terminal_buf = open_shell(command, left_count)
+  child.api.nvim_input("<Esc>")
+  Helpers.wait_until(child, function()
+    return child.api.nvim_get_option_value("buftype", { buf = 0 }) == "prompt"
+  end)
+  return terminal_buf
+end
+
+T["probes prompt, command, and cursor without shell integration"] = function()
+  open_popup("echo old", 3)
+  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ echo old")
   MiniTest.expect.equality(child.api.nvim_win_get_cursor(0), { 1, 7 })
 end
 
-T["minimal editor"]["save updates shell cursor"] = function()
-  local terminal_buf = Helpers.open_shell(child)
-  child.api.nvim_input("i")
-  Helpers.wait_for_mode(child, "t")
-  child.api.nvim_input("echo lorem ipsum")
-  Helpers.wait_for_read_command(child, terminal_buf, "echo lorem ipsum")
-  local terminal_win = child.api.nvim_get_current_win()
-
-  child.api.nvim_input("<Esc>")
-  Helpers.wait_for_mode(child, "n")
-  child.api.nvim_input("b")
-  MiniTest.expect.equality(child.api.nvim_win_get_cursor(0), { 1, 13 })
-
-  child.api.nvim_input("<Esc>")
+T["passes the command state to the read callback"] = function()
+  open_shell("echo old", 3)
+  child.lua([[require("termio").read(function(command) ReadCommand = command end)]])
   Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_buf() == terminal_buf
+    return child.lua_get([[ReadCommand ~= nil]])
   end)
-  MiniTest.expect.equality(
-    child.lua_get(
-      [[require("termio.api").cursor_index_in_command(...)]],
-      { terminal_win, terminal_buf }
-    ),
-    11
-  )
-
-  child.api.nvim_input("i")
-  Helpers.wait_for_mode(child, "t")
-  MiniTest.expect.equality(
-    child.lua_get(
-      [[require("termio.api").cursor_index_in_command(...)]],
-      { terminal_win, terminal_buf }
-    ),
-    11
-  )
+  MiniTest.expect.equality(child.lua_get([[ReadCommand]]), { text = "echo old", cursor = 5 })
 end
 
-T["minimal editor"]["normal p opens and pastes in popup"] = function()
-  local terminal_buf = Helpers.open_shell(child)
-  child.api.nvim_input("i")
-  Helpers.wait_for_mode(child, "t")
-  child.api.nvim_input("echo hello")
-  Helpers.wait_for_read_command(child, terminal_buf, "echo hello")
-  child.lua([[vim.fn.setreg('"', ' world', 'c')]])
-  child.cmd("stopinsert")
-  Helpers.wait_for_mode(child, "nt")
-  child.api.nvim_input("p")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_buf() ~= terminal_buf
-  end)
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_line() == "$ echo hello world"
-  end)
-  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ echo hello world")
-end
-
-T["minimal editor"]["visual p opens and pastes in popup"] = function()
-  local terminal_buf = Helpers.open_shell(child)
-  child.api.nvim_input("i")
-  Helpers.wait_for_mode(child, "t")
-  child.api.nvim_input("echo hello world")
-  Helpers.wait_for_read_command(child, terminal_buf, "echo hello world")
-  child.lua([[vim.fn.setreg('"', 'goodbye', 'c')]])
-  child.cmd("stopinsert")
-  Helpers.wait_for_mode(child, "nt")
-  child.api.nvim_input("bbvep")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_buf() ~= terminal_buf
-  end)
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_line() == "$ echo goodbye world"
-  end)
-  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ echo goodbye world")
-end
-
-T["minimal editor"]["clamps cursor after prompt"] = function()
-  open_minimal_editor("echo old")
-  child.cmd("normal! 0")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_win_get_cursor(0)[2] == 2
-  end)
-end
-
-T["minimal editor"]["writes command from prompt buffer"] = function()
-  local terminal_buf = open_minimal_editor("echo old")
-  child.api.nvim_set_current_line("$ echo minimal")
-  child.lua([[require("termio.editors.minimal").write()]])
-  Helpers.wait_for_read_command(child, terminal_buf, "echo minimal")
-end
-
-T["minimal editor"]["insert enter submits command"] = function()
-  local terminal_buf = open_minimal_editor("echo insert")
-  child.api.nvim_input("i<CR>")
-  Helpers.wait_for_shell_output(child, terminal_buf, "insert")
-  Helpers.wait_for_mode(child, "t")
-end
-
-T["minimal editor"]["insert shift enter adds newline"] = function()
-  open_minimal_editor("echo first")
-  child.api.nvim_input("A<S-CR>second")
-  Helpers.wait_until(child, function()
-    return child.lua_get([[vim.api.nvim_buf_line_count(0)]]) == 2
-  end)
-  MiniTest.expect.equality(
-    child.api.nvim_buf_get_lines(0, 0, -1, false),
-    { "$ echo first", "second" }
-  )
-end
-
-T["minimal editor"]["normal escape saves and closes"] = function()
-  local terminal_buf = open_minimal_editor("echo hello")
-  child.api.nvim_set_current_line("$ echo changed")
+T["saves by pasting into the cleared shell command"] = function()
+  local terminal_buf = open_popup("echo old")
+  child.api.nvim_set_current_line("$ echo new")
   child.api.nvim_input("<Esc>")
   Helpers.wait_until(child, function()
     return child.api.nvim_get_current_buf() == terminal_buf
   end)
-  Helpers.wait_for_read_command(child, terminal_buf, "echo changed")
-end
-
-T["minimal editor"]["q closes without submitting"] = function()
-  local terminal_buf = open_minimal_editor("echo hello")
-  child.api.nvim_set_current_line("$ echo changed")
-  child.api.nvim_input("q")
   Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_buf() == terminal_buf
-  end)
-  Helpers.wait_for_read_command(child, terminal_buf, "echo hello")
-end
-
-T["minimal editor"]["tab passes through to terminal insert mode"] = function()
-  local terminal_buf = open_minimal_editor("echo hello")
-  child.api.nvim_input("A")
-  Helpers.wait_for_mode(child, "i")
-  child.api.nvim_input("<Tab>")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_buf() == terminal_buf
-  end)
-  Helpers.wait_for_mode(child, "t")
-end
-
-T["minimal editor"]["j and k move by visual lines"] = function()
-  open_minimal_editor(("echo lorem ipsum dolor sit amet "):rep(5))
-  local start = child.api.nvim_win_get_cursor(0)
-  child.api.nvim_input("j")
-  child.wait(20)
-  MiniTest.expect.equality(child.api.nvim_win_get_cursor(0)[1] >= start[1], true)
-  child.api.nvim_input("k")
-  child.wait(20)
-  MiniTest.expect.equality(child.api.nvim_get_option_value("buftype", { buf = 0 }), "prompt")
-end
-
-T["minimal editor"]["resizes when content grows"] = function()
-  open_minimal_editor("echo first")
-  local initial_config = child.api.nvim_win_get_config(0)
-  child.api.nvim_input("A<S-CR>second")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_win_get_config(0).height == 2
-  end)
-  MiniTest.expect.equality(initial_config.height, 1)
-end
-
-T["minimal editor"]["first-line normal pass-through returns to terminal"] = function()
-  local terminal_buf = open_minimal_editor("echo hello")
-  Helpers.wait_for_mode(child, "n")
-  child.api.nvim_input("{")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_buf() == terminal_buf
+    local text = table.concat(child.api.nvim_buf_get_lines(terminal_buf, 0, -1, false), "\n")
+    return text:find("$ echo new", 1, true) ~= nil
   end)
 end
 
-T["minimal editor"]["search keys pass through to terminal"] = function()
-  local terminal_buf = open_minimal_editor("echo hello")
-  child.api.nvim_input("/")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_buf() == terminal_buf and child.fn.getcmdtype() == "/"
-  end)
+T["handles a cached prompt row below the current command"] = function()
+  open_shell("echo old")
+  local terminal_buf = child.api.nvim_get_current_buf()
+  child.lua([[require("termio.api").get_cache(...).prompt_row = 999]], { terminal_buf })
   child.api.nvim_input("<Esc>")
+  Helpers.wait_until(child, function()
+    return child.api.nvim_get_option_value("buftype", { buf = 0 }) == "prompt"
+  end)
+  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ echo old")
 end
 
-T["minimal editor"]["search match in command reopens editor"] = function()
-  child.lua([[
-    require("termio").setup({
-      editor = { type = "minimal", popup = { open_on_focus = true } },
-    })
-  ]])
-  local terminal_buf = open_minimal_editor("echo hello hello")
-  child.api.nvim_input("?")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_buf() == terminal_buf and child.fn.getcmdtype() == "?"
-  end)
-  child.api.nvim_input("hello<CR>")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_buf() ~= terminal_buf
-  end)
-  MiniTest.expect.equality(child.bo.buftype, "prompt")
-  MiniTest.expect.equality(child.api.nvim_win_get_cursor(0), { 1, 13 })
-  child.api.nvim_input("cegoodbye<Esc>")
-  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ echo hello goodbye")
-end
-
-T["minimal editor"]["redirects opened files to target window"] = function()
-  local _, terminal_win = open_minimal_editor("echo old")
-  child.cmd("edit README.md")
-  Helpers.wait_until(child, function()
-    return child.api.nvim_get_current_win() == terminal_win
-  end)
-  Helpers.expect.match(child.api.nvim_buf_get_name(0), "README%.md$")
+T["reads a 300-word wrapped command on first open"] = function()
+  local words = {}
+  for index = 1, 300 do
+    words[index] = "word"
+  end
+  local command = table.concat(words, " ")
+  open_popup(command)
+  MiniTest.expect.equality(child.api.nvim_get_current_line(), "$ " .. command)
 end
 
 return T

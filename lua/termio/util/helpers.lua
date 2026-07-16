@@ -1,44 +1,12 @@
-local M = {}
 local config = require("termio.config")
-local log = require("termio.util.log")
 local state = require("termio.state")
+
+local M = {}
 
 ---@param keys string
 ---@return string
 function M.term_codes(keys)
   return vim.api.nvim_replace_termcodes(keys, true, false, true)
-end
-
----@return boolean
-function M.is_visual_mode()
-  return vim.fn.mode():match("^[vV\22]") ~= nil
-end
-
----@return { first: [integer, integer], last: [integer, integer] }
-function M.visual_range()
-  local cursor = vim.api.nvim_win_get_cursor(0)
-  local start = vim.fn.getpos("v")
-  return {
-    first = { start[2], start[3] - 1 },
-    last = cursor,
-  }
-end
-
----@param range { first: [integer, integer], last: [integer, integer] }
-function M.restore_visual_range(range)
-  vim.api.nvim_win_set_cursor(0, range.first)
-  vim.cmd("normal! v")
-  vim.api.nvim_win_set_cursor(0, range.last)
-end
-
----@param buf integer
----@return integer
-local function assert_terminal_channel(buf)
-  local chan = vim.bo[buf].channel
-  if not chan or chan == 0 then
-    error("termio: missing terminal channel")
-  end
-  return chan
 end
 
 ---@param buf integer
@@ -55,77 +23,6 @@ function M.is_terminal_channel_open(buf)
   return ok and info.exitcode == -1
 end
 
----@param bytes string
----@param buf? integer
-function M.send_bytes(bytes, buf)
-  local target = M.current_buf(buf)
-  M.assert_terminal(target)
-  if not M.is_terminal_channel_open(target) then
-    log.debug("terminal.send.skip_closed", { buf = target })
-    return
-  end
-  local ok, err = pcall(vim.api.nvim_chan_send, assert_terminal_channel(target), bytes)
-  if not ok then
-    log.debug("terminal.send.failed", { buf = target, error = err })
-  end
-end
-
----@param keys string
----@param buf? integer
-function M.send_keys(keys, buf)
-  M.send_bytes(M.term_codes(keys), buf)
-end
-
----@param buf? integer
-function M.clear_command_line(buf)
-  M.send_keys("<C-e><C-u>", buf)
-end
-
----@param command string
----@param patterns [string, string][]
----@return string
-function M.replace_patterns(command, patterns)
-  for _, replacement in ipairs(patterns) do
-    command = command:gsub(replacement[1], replacement[2])
-  end
-  return command
-end
-
----@param rows string[]
----@param patterns [string, string][]
----@return string
-function M.command_from_rows(rows, patterns)
-  local replaced_rows = {}
-  for index, row in ipairs(rows) do
-    replaced_rows[index] = M.replace_patterns(row, patterns)
-  end
-  return table.concat(replaced_rows, "")
-end
-
----@param raw_state { rows: string[], cursor_index: integer? }
----@return { command: string, cursor: integer? }
-function M.normalize_state(raw_state)
-  return {
-    command = M.command_from_rows(raw_state.rows, config.options.read_replace_patterns),
-    cursor = raw_state.cursor_index,
-  }
-end
-
----@param buf? integer
----@return integer
-function M.current_buf(buf)
-  -- TODO: remove this function if possible
-  return buf or vim.api.nvim_get_current_buf()
-end
-
----@param buf integer
----@return integer?
-function M.visible_window(buf)
-  -- TODO: remove this function if possible
-  local win = vim.fn.bufwinid(buf)
-  return win ~= -1 and win or nil
-end
-
 ---@param buf integer
 ---@return boolean
 function M.is_enabled_terminal(buf)
@@ -136,12 +33,11 @@ function M.is_enabled_terminal(buf)
   if not pattern then
     return true
   end
-  local name = vim.api.nvim_buf_get_name(buf)
   local ok, regex = pcall(vim.regex, pattern)
   if not ok then
     error("termio: invalid editor.terminal_name_pattern: " .. tostring(pattern))
   end
-  return regex:match_str(name) ~= nil
+  return regex:match_str(vim.api.nvim_buf_get_name(buf)) ~= nil
 end
 
 ---@param buf integer
@@ -158,33 +54,6 @@ function M.is_editor_disabled(buf)
     error("termio: config.editor.is_disabled must be a function")
   end
   return is_disabled(buf) == true
-end
-
----@param buffers table<integer, table>
----@param buf integer
----@return table
-function M.ensure_buffer_state(buffers, buf)
-  buffers[buf] = buffers[buf]
-    or {
-      prompt_start_cursor = nil,
-      prompt_end_cursor = nil,
-      active_prompt_cursor = nil,
-      active_prompt_source = nil,
-      active_prompt_process = nil,
-      terminal_title = nil,
-      shell_phase = nil,
-      shell_kind = nil,
-      shell_integration = nil,
-      shell_state = { command = "", cursor = nil },
-    }
-  return buffers[buf]
-end
-
----@param buf integer
-function M.assert_terminal(buf)
-  if vim.bo[buf].buftype ~= "terminal" then
-    error("termio: current buffer is not a terminal")
-  end
 end
 
 return M

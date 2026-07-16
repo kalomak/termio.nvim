@@ -3,83 +3,17 @@
 > [!NOTE]
 > WIP. Expect bugs.
 
-Edit terminal commands however you like.
+Edit the current terminal command with Neovim.
 
-<img width="1600" height="795" alt="screen-recording-new" src="https://github.com/user-attachments/assets/9e546153-4f5e-4d87-a1c6-18f3a85fa9a3" />
-
-<br>
-
-Provides a read/write API + a bundled 'editor' for the terminal buffer.
-Set `editor = nil` to only load the API.
-Currently supports zsh, bash, and fish.
-It is easy to add support for other shells as well if needed.
+termio probes the terminal with standard shell editing keys. No shell integration or startup script is required.
 
 ## Setup
 
-### Shell
-
-> [!NOTE]
-> Currently not auto-loading shell integration because it seems a bit invasive.
-> The integration scripts set Emacs/default shell key bindings in terminals where they are active.
-
-<details>
-<summary>Zsh</summary>
-
-Load [zsh integration script](./shell/termio.zsh) on startup, e.g. in `~/.zshrc`:
-
-```zsh
-if [ -n "$NVIM" ]; then
-  source "$HOME/code/nvim/termio.nvim/shell/termio.zsh"
-fi
-```
-
-</details>
-
-<details>
-<summary>Bash</summary>
-
-Load [bash integration script](./shell/termio.bash) on startup, e.g. in `~/.bashrc`:
-
-```bash
-if [ -n "$NVIM" ]; then
-  source "$HOME/code/nvim/termio.nvim/shell/termio.bash"
-fi
-```
-
-</details>
-
-<details>
-<summary>Fish</summary>
-
-Load [fish integration script](./shell/termio.fish) on startup, e.g. in `~/.config/fish/config.fish`:
-
-```fish
-if set -q NVIM
-  source "$HOME/code/nvim/termio.nvim/shell/termio.fish"
-end
-```
-
-</details>
-
-Check if all markers are visible to Neovim:
-
-```vim
-:checkhealth termio
-```
-
-### Neovim
-
-<details>
-<summary>With <a href="https://neovim.io/doc/user/pack.html#vim.pack">vim.pack</a> (Neovim 0.12+)</summary>
-
 ```lua
-vim.pack.add({ "https://github.com/Kallemakela/termio.nvim" })
+require("termio").setup()
 ```
 
-</details>
-
-<details>
-<summary>With <a href="https://github.com/folke/lazy.nvim">lazy.nvim</a></summary>
+With lazy.nvim:
 
 ```lua
 {
@@ -88,131 +22,88 @@ vim.pack.add({ "https://github.com/Kallemakela/termio.nvim" })
 }
 ```
 
-</details>
-
-Or just on startup:
-```lua
-require("termio").setup()
-```
-
 ## Config
 
 Defaults live in `lua/termio/config.lua`.
 
 ```lua
 require("termio").setup({
-  -- Vim regexes. Command text starts after the matched prompt.
-  prompt_patterns = { [[^>>> ]], [[^\.\.\. ]] },
-  -- Vim regex replacements as { pattern, replacement } pairs.
-  read_replace_patterns = {},
-  write_replace_patterns = {},
   editor = {
-    -- Bundled editor to use. nil gives API-only mode.
-    type = "integrated", -- "integrated" | "minimal" | "overlay" | nil
-    -- Filetype assigned to bundled editor buffers.
+    type = "integrated", -- false | "minimal" | "centered" | "overlay" | "integrated"
     filetype = "bash",
-    -- Vim regex matched against terminal buffer names before enabling editor keymaps.
     terminal_name_pattern = [[\v(:| )(/[^ ]*/)?(zsh|bash|fish)( |$)]],
-    -- Terminal-mode key that opens the editor.
     open = "<Esc>",
-    -- Filter function to disable editor. Can be used to disable e.g. when TUI active.
     is_disabled = function(buf)
-      -- Example, assuming you track if TUI active in terminal
-      -- See `./docs/tui-detection.md` for tracking alt-screen/TUI state.
-      -- return vim.b[buf].term_tui_active
       return false
     end,
-    -- Global editor action keymaps by mode: t=terminal, n=normal.
     keys = {
       t = {
         ["<Esc>"] = "open",
         ["<CR>"] = "submit",
         ["<C-u>"] = "clear",
         ["<C-s>"] = "write",
-        ["<M-t>"] = "toggle", -- This toggles the plugin off and on
+        ["<M-t>"] = "toggle",
       },
       n = {
         ["<CR>"] = "submit",
         ["<C-u>"] = "clear",
         ["<C-s>"] = "write",
         ["<Esc>"] = "save_and_close",
-        ["<M-t>"] = "toggle", -- This toggles the plugin off and on
+        ["<M-t>"] = "toggle",
       },
     },
     popup = {
-      -- Popup window styling. nil keeps editor defaults or the active theme.
       style = {
         border = nil,
-        window = nil, -- nvim_open_win style, e.g. "minimal".
+        window = nil,
         winhighlight = nil,
       },
-      -- Open popup automatically when a fresh prompt is detected.
-      open_on_prompt = false,
-      -- Open popup when the cursor focuses the editable shell command.
-      open_on_focus = false,
-      -- Popup-local action keymaps by mode.
-      -- down/up move focus to the terminal while keeping popup open.
       keys = {
-        n = {
-          q = "close",
-          j = "down",
-          k = "up",
-        },
-        i = {
-          ["<CR>"] = "submit",
-          ["<C-u>"] = "clear",
-          ["<C-s>"] = "write",
-        },
-        x = { j = "down", k = "up" },
-        o = { j = "down", k = "up" },
+        i = { ["<CR>"] = "submit", ["<C-u>"] = "clear", ["<C-s>"] = "write" },
+        n = { q = "close", j = "down", k = "up" },
       },
-      -- Keys sent to the target terminal instead of handled by the popup.
       pass_through_insert_keys = { "<Up>", "<Tab>" },
-      pass_through_normal_keys = { "}", "<C-d>", "<C-b>", "G", "L" },
-      -- Same as above, but only while cursor is on the first popup line.
-      pass_through_normal_keys_first_line = { "{", "<C-u>", "gg", "H" },
+      pass_through_normal_keys = { "}", "<C-d>", "<C-b>", "G", "L", "/", "?", "n", "N" },
     },
   },
-  -- true: vim.notify debug events. function(event, data): custom logger.
-  debug = false,
 })
 ```
 
 ## Editors
 
-Currently includes 3 bundled 'editors' that use the API.
+### `minimal`
 
-#### `integrated`
+Small centered prompt editor bundled directly around the API. `<Esc>` saves, `q` cancels, and `<CR>` submits.
 
-- What: Takes over the normal mode of the terminal buffer.
-- Good: No separate window, edit terminal command like any other text.
-- Bad: Needs to fight with the shell process over the control of the terminal buffer. Needs to sync often, so most jittery. Most likely to have bugs.
+### `centered`
 
-#### `minimal`
+The previous minimal editor. A centered popup with configurable actions, autoresizing, and pass-through keys.
 
-- What: Opens a popup for editing the current command.
-- Good: No syncing concerns. Simple. More control, e.g., completions.
-- Bad: Separate window. Less seamless than editing in-place.
-- Note: Was meant to be minimal.
+### `overlay`
 
-#### `overlay`
+Uses the shared popup editor but places it over the terminal command.
 
-- What: Same as popup, but opens the window where the command is.
-- Good: Bit more seamless than minimal.
-- Bad: More window/focus handling complexity.
+### `integrated`
+
+Paints a local editable draft into the terminal buffer. The shell input stays cleared until the draft is saved or submitted.
 
 ## API
 
+`read` is asynchronous and clears the current shell input. Call `write` in the callback to restore or replace it.
+Use `editor.type = false` for API-only setup.
+
 ```lua
 local termio = require("termio")
-local buf = vim.api.nvim_get_current_buf()
-local command = termio.read_command(buf)
-termio.write_command("echo hello", buf)
+
+termio.read(function(command)
+  print(command.text, command.cursor)
+  termio.write(command.text)
+end)
 ```
 
-## User Commands
+`write(command, buf)` accepts an optional terminal buffer. It writes bracketed paste into input already cleared by `read`.
 
-User commands target the current terminal buffer.
+## Commands
 
 ```vim
 :TermioReadCommand
@@ -222,132 +113,10 @@ User commands target the current terminal buffer.
 :TermioToggle
 ```
 
-## Terms
+`TermioReadCommand` restores the command after printing it.
 
-- Command: editable text after the latest prompt marker.
-- Command row: one terminal display row occupied by a command.
-- Prompt: shell text shown before the command.
-- OSC133: terminal escape sequence used to find where the prompt ends and command starts.
+## Development
 
-## Completions
-
-Bundled editors set `vim.b.termio_editor` to `"minimal"`, `"overlay"`, or `"integrated"`.
-Use that marker to set custom completions for editor buffers.
-
-Blink example:
-
-```lua
-require("blink.cmp").setup({
-  sources = {
-    default = function()
-      if vim.b.termio_editor == "minimal" or vim.b.termio_editor == "overlay" then
-        return { "path", "snippets" }
-      end
-      return { "lsp", "path", "snippets", "buffer" }
-    end,
-  },
-  term = {
-    enabled = true,
-    sources = function()
-      return vim.b.termio_editor == "integrated" and { "path", "snippets" } or {}
-    end,
-  },
-})
-```
-
-## Project Structure
-
-```text
-termio.nvim/
-├── lua/termio/
-│   ├── init.lua                 setup entrypoint
-│   ├── config.lua               defaults
-│   ├── api.lua                  public read/write API
-│   ├── commands.lua             user commands
-│   ├── health.lua               :checkhealth termio checks
-│   ├── terminal_buffer.lua      terminal-buffer reads and cursor math
-│   ├── state.lua                plugin state storage
-│   ├── shell_state.lua          OSC marker state updates
-│   ├── editors/                 bundled terminal-buffer editors
-│   │   ├── integrated.lua         default integrated-buffer editor
-│   │   ├── minimal.lua            scratch-buffer editor
-│   │   ├── overlay.lua            floating prompt-buffer editor
-│   │   ├── autoresize.lua         editor window resizing helpers
-│   │   └── fixbuf.lua             fixed editor window helpers
-│   ├── shell_integration/       shell marker and key-hook integration
-│   │   ├── init.lua             shell integration dispatch
-│   │   ├── zsh.lua              zsh integration
-│   │   ├── bash.lua             bash integration
-│   │   └── fish.lua             fish integration
-│   └── util/                    shared utilities
-│       ├── helpers.lua          small helper functions
-│       └── log.lua              debug logging
-├── shell/                       shell startup scripts
-│   ├── termio.zsh               zsh markers and key hooks
-│   ├── termio.bash              bash markers and key hooks
-│   └── termio.fish              fish markers and key hooks
-├── tests/                       MiniTest tests
-├── dev/                         dev harness
-├── docs/                        notes, setup details, roadmap
-├── scripts/minimal_init.lua     test config
-├── run_filtered_tests.sh        focused test runner
-└── Makefile                     all-test entrypoint
-```
-
-## How the api works.
-
-#### `read`
-- reads command text from the terminal buffer after the current prompt marker.
-- prompt markers come from OSC 133 shell integration or configured prompt regexes.
-- if extra rows appear after the prompt, asks the shell hook to clear transient completion UI and rereads the buffer.
-
-#### `write`
-- clear the command by sending C-e C-u to the shell process, then sending the command inside bracketed paste.
-- move the cursor by sending arrow keys to the shell.
-- shell hooks redraw or clear completion UI when available; command transport is always PTY input.
-
-## REPLs
-
-`termio.nvim` uses OSC133 markers or configured prompt regexes to detect where
-the prompt ends and the editable command starts. 
-
-### Example: Python REPL
-
-Add these to prompt patterns:
-```lua
-prompt_patterns = { [[^>>> ]], [[^\.\.\. ]] },
-```
-
-Or, add OSC133 markers to the REPL prompt. Example for python:
-
-```sh
-# ~/.zshrc
-export PYTHONSTARTUP="$HOME/.pythonrc.py"
-```
-
-```python
-import sys
-
-OSC133_PROMPT_START = "\001\033]133;A\007\002"
-OSC133_PROMPT_END = "\001\033]133;B\007\002"
-
-sys.ps1 = OSC133_PROMPT_START + ">>> " + OSC133_PROMPT_END
-sys.ps2 = OSC133_PROMPT_START + "... " + OSC133_PROMPT_END
-```
-
-Check that prompt is as expected:
-```python
->>> print(repr(sys.ps1))
-'\x01\x1b]133;A\x07\x02>>> \x01\x1b]133;B\x07\x02'
-```
-
-> [!NOTE]
-> REPLs use prompt regexes when OSC 133 shell markers are not available.
-
-## [Known issues/Planned features/Roadmap/TODO](./docs/todo.md)
-
-## [Contributing](./docs/contributing.md)
-
-## [Development](./docs/development.md)
-
-## [Related projects](./docs/related-projects.md)
+- [Development](./docs/development.md)
+- [Roadmap](./docs/todo.md)
+- [Related projects](./docs/related-projects.md)

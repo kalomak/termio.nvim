@@ -8,12 +8,12 @@ local M = {}
 ---@return { start_row: integer, start_col: integer, end_row: integer, end_col: integer }?
 function M.get(buf)
   local target = buf or vim.api.nvim_get_current_buf()
-  local cursor = api.command_start_cursor(target)
+  local cursor = api.get_cache(target).command_start
   if not cursor then
     return nil
   end
   local start_row, start_col = unpack(cursor)
-  local command = terminal_buffer.command_text(target, cursor)
+  local command = terminal_buffer.command_text(target, cursor, true)
   local end_cursor = terminal_buffer.location_from_offset(target, cursor, #command)
   return {
     start_row = start_row,

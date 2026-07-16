@@ -1,17 +1,10 @@
-local config = require("termio.config")
 local api = require("termio.api")
-local editable_zone = require("termio.editable_zone")
+local config = require("termio.config")
 local helpers = require("termio.util.helpers")
 local keymaps = require("termio.util.keymaps")
-local log = require("termio.util.log")
 local terminal_buffer = require("termio.terminal_buffer")
-local M = {}
-local DELETE_OPERATOR_FUNC = "v:lua.require'termio.editors.integrated'.apply_delete_operator"
-local YANK_OPERATOR_FUNC = "v:lua.require'termio.editors.integrated'.apply_yank_operator"
--- `g@` calls operatorfunc after the keymap returns, so keep the selected
--- after-delete behavior in an upvalue until `apply_delete_operator()` runs.
-local pending_after_delete_operator
-local pending_after_yank_cursor
+
+local M = { buffers = {} }
 
 local function build_context(ctx)
   ctx = ctx or {}
@@ -22,759 +15,212 @@ local function build_context(ctx)
   }
 end
 
----@param buf integer
----@param reason? string
-local function set_sync_block_reason(buf, reason)
-  M.buffers[buf].sync_block_reason = reason
+local function command_start(buf)
+  return api.get_cache(buf).command_start
 end
 
-local function has_command_start_cursor(buf)
-  return api.command_start_cursor(buf) ~= nil
+local function command_text(buf)
+  return terminal_buffer.command_text(buf, command_start(buf), true)
 end
 
-local function ensure_command_start_cursor(buf)
-  if has_command_start_cursor(buf) then
-    return true
-  end
-  api.update_prompt_range(buf)
-  return has_command_start_cursor(buf)
+local function normal_cursor_offset(command)
+  return math.min(command.cursor, math.max(#command.text - 1, 0))
 end
 
-local function read_editor_state(buf, win)
-  return {
-    command = terminal_buffer.command_text(buf, api.command_start_cursor(buf)),
-    cursor = api.cursor_index_in_command(win, buf),
-  }
+local function replace_visible_command(buf, command)
+  local cache = api.get_cache(buf)
+  local first, last = cache.command_start, cache.command_end
+  local last_line = vim.api.nvim_buf_get_lines(buf, last[1] - 1, last[1], false)[1]
+  last = { last[1], #last_line }
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_text(
+    buf,
+    first[1] - 1,
+    first[2],
+    last[1] - 1,
+    last[2],
+    vim.split(command.text, "\n", { plain = true })
+  )
+  cache.command_end = terminal_buffer.location_from_offset(buf, first, #command.text)
 end
 
----Wait for integrated text to match shell state after query/write markers.
----Bash readline redraw can arrive after the marker that updates shell state.
----@param buf integer
----@param command? string
-local function wait_until_command_is_rendered(buf, command)
-  terminal_buffer.wait_until_command_is_rendered(buf, api.command_start_cursor(buf), command)
+local function start_editing(ctx, command)
+  replace_visible_command(ctx.target_buf, command)
+  local cursor = terminal_buffer.location_from_offset(
+    ctx.target_buf,
+    command_start(ctx.target_buf),
+    normal_cursor_offset(command)
+  )
+  vim.api.nvim_win_set_cursor(ctx.target_win, cursor)
+  M.buffers[ctx.target_buf].editing = true
 end
 
-local function is_position_after(row, col, target)
-  return row > target[1] or (row == target[1] and col > target[2])
-end
-
----Convert a command-text byte offset back to a terminal buffer cursor.
----@param buf integer
----@param offset integer offset from prompt end
----@return integer[] cursor 1-based row, 0-based column
-local function get_buffer_location_from_shell_offset(buf, offset)
-  return terminal_buffer.location_from_offset(buf, api.command_start_cursor(buf), offset)
-end
-
----@param cursor integer[]
----@param min_cursor integer[]
----@param max_cursor integer[]
----@return integer[] cursor
-local function clamp_cursor(cursor, min_cursor, max_cursor)
-  if is_position_after(min_cursor[1], min_cursor[2], max_cursor) then
-    max_cursor = min_cursor
-  end
-  if cursor[1] == min_cursor[1] and cursor[2] < min_cursor[2] then
-    return min_cursor
-  end
-  if is_position_after(cursor[1], cursor[2], max_cursor) then
-    return max_cursor
-  end
-  return cursor
-end
-
----@param buf integer
----@param cursor integer[]
----@param command_length? integer
----@return integer[] cursor
-local function clamp_cursor_to_editable_zone(buf, cursor, command_length)
-  local zone = editable_zone.get(buf)
-  if not zone then
-    return cursor
-  end
-  local min_cursor = { zone.start_row, zone.start_col }
-  local max_cursor = { zone.end_row, zone.end_col }
-  if command_length then
-    max_cursor = get_buffer_location_from_shell_offset(buf, math.max(command_length - 1, 0))
-  end
-  return clamp_cursor(cursor, min_cursor, max_cursor)
-end
-
----@param win integer
----@param current_cursor integer[]
----@param target_cursor integer[]
-local function move_cursor_if_needed(win, current_cursor, target_cursor)
-  if current_cursor[1] ~= target_cursor[1] or current_cursor[2] ~= target_cursor[2] then
-    vim.api.nvim_win_set_cursor(win, target_cursor)
-  end
-end
-
----@param buf integer
----@param cursor integer[]
----@param win? integer
----@param command_length? integer
----@return integer[] cursor
-local function move_cursor_back_to_editable_zone(buf, cursor, win, command_length)
-  win = win or 0
-  local clamped_cursor = clamp_cursor_to_editable_zone(buf, cursor, command_length)
-  move_cursor_if_needed(win, cursor, clamped_cursor)
-  return clamped_cursor
-end
-
----Refresh integrated state from the current cursor position.
----@param buf integer
----@param cursor integer[]
----@param win? integer
-local function refresh_integrated_state(buf, cursor, win)
-  win = win or 0
-  local current_cursor = vim.api.nvim_win_get_cursor(win)
-  cursor = editable_zone.canonicalize_cursor_at_wrapped_command_end(buf, cursor)
-  move_cursor_if_needed(win, current_cursor, cursor)
-  vim.bo[buf].modifiable = editable_zone.contains(buf, cursor)
-  if vim.bo[buf].modifiable then
-    M.buffers[buf].last_integrated_cursor = vim.deepcopy(cursor)
-  end
-end
-
----@param buf integer
----@param target? { command?: string, cursor?: integer }
----@return boolean did_sync
-function M.write(buf, target)
-  local bufinfo = M.buffers[buf]
-  bufinfo.has_unsynced_edits = false
-  target = target or {}
-  if target.command == nil or target.cursor == nil then
-    local current = read_editor_state(buf, vim.api.nvim_get_current_win())
-    target.command = target.command or current.command
-    target.cursor = target.cursor or current.cursor
-  end
-  local command = target.command
-  local cursor = target.cursor
-  local delay = config.options.waits.integrated_write_guard_ms
-  log.debug("integrated.write.start", {
-    buf = buf,
-    has_target = next(target) ~= nil,
-    delay = delay,
-    sync_block_reason = bufinfo.sync_block_reason,
-    has_unsynced_edits = bufinfo.has_unsynced_edits,
-  })
-  -- Terminal redraw after sync can emit TextChanged events into the same buffer.
-  -- Keep a short guard so those redraws are not treated as fresh user edits.
-  set_sync_block_reason(buf, "write")
-  vim.defer_fn(function()
-    if M.buffers[buf] and M.buffers[buf].sync_block_reason == "write" then
-      set_sync_block_reason(buf, nil)
-    end
-    log.debug("integrated.writing.stop", { buf = buf })
-  end, delay)
-  local command_state = helpers.ensure_buffer_state(api.buffers, buf).shell_state
-  local did_sync = command_state.command ~= command
-    or (cursor ~= nil and command_state.cursor ~= cursor)
-  if did_sync then
-    api.write_command(command, buf, cursor)
-    wait_until_command_is_rendered(buf, command)
-  end
-  log.debug("integrated.write.done", { buf = buf, did_sync = did_sync })
-  return did_sync
-end
-
-local function override_state(current, target)
-  if not target then
-    return current
-  end
-  if target.command ~= nil then
-    current.command = type(target.command) == "function" and target.command(current)
-      or target.command
-  end
-  if target.cursor ~= nil then
-    current.cursor = type(target.cursor) == "function" and target.cursor(current) or target.cursor
-  end
-  return current
-end
-
-local function enter_insert_with_target(buf, target_state)
-  local win = vim.api.nvim_get_current_win()
-  if not ensure_command_start_cursor(buf) then
-    vim.cmd.startinsert()
-    return
-  end
-  local target = override_state(read_editor_state(buf, win), target_state)
-  M.write(buf, target)
-  vim.cmd.startinsert()
-end
-
-local function run_termio_action(buf, event, action, disabled_return)
-  if helpers.is_editor_disabled(buf) then
-    log.debug(event .. ".disabled", { buf = buf })
-    return disabled_return
-  end
-  return action()
-end
-
-local function set_termio_keymap(buf, mode, lhs, event, action, opts)
-  opts = opts or {}
-  local disabled_return = opts.expr and "" or nil
-  M.buffers[buf].keymaps:map(mode, lhs, function()
-    return run_termio_action(buf, event, action, disabled_return)
-  end, opts)
-end
-
----@param buf integer
-local function mark_unsynced_edit(buf)
-  M.buffers[buf].has_unsynced_edits = true
-end
-
-local function paste_register_into_integrated_buffer(after, register)
-  -- `normal! p` can take terminal-buffer paste paths. Keep paste as a plain
-  -- buffer edit so the integrated draft stays desynced from the shell state.
-  local text = vim.fn.getreg(register or vim.v.register)
-  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
-  if after then
-    col = col + 1
-  end
-  local lines = vim.split(text, "\n", { plain = true })
-  vim.api.nvim_buf_set_text(0, row - 1, col, row - 1, col, lines)
-  -- Cursor should land on the last inserted character, matching normal paste.
-  vim.api.nvim_win_set_cursor(0, { row + #lines - 1, col + #lines[#lines] - 1 })
-end
-
-local function delete_visual_selection_then(action)
-  mark_unsynced_edit(vim.api.nvim_get_current_buf())
-  vim.cmd("normal! d")
-  if action then
-    action()
-  end
-end
-
----Replace the visual selection with a register using integrated-buffer writes.
----The delete step changes `vim.v.register`, so preserve and pass the original
----register explicitly to paste the user's intended text.
----@param after boolean paste after cursor when true, before cursor when false
-local function paste_register_over_visual_selection(after)
-  local register = vim.v.register
-  -- TODO: check if this is needed, diverges from normal behaviour
-  local text = vim.fn.getreg(register):gsub("%s+$", "")
-  local register_type = vim.fn.getregtype(register)
-  delete_visual_selection_then(function()
-    vim.fn.setreg(register, text, register_type)
-    paste_register_into_integrated_buffer(after, register)
-  end)
-end
-
----Convert a buffer cursor to a command-text byte offset from the prompt end.
----@param buf integer
----@param cursor integer[] 1-based row, 0-based column
----@return integer offset
-local function get_shell_cursor_offset(buf, cursor)
-  local prompt_row, prompt_col = unpack(api.command_start_cursor(buf))
-  local offset = 0
-  for row = prompt_row, cursor[1] do
-    local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
-    local start_col = row == prompt_row and prompt_col or 0
-    local end_col = row == cursor[1] and cursor[2] or #line
-    offset = offset + math.max(end_col - start_col, 0)
-  end
-  return offset
-end
-
----Return the command offset where the current operator motion started.
----@param buf integer
----@return integer offset
-local function command_offset_at_operator_start(buf)
-  local mark = vim.api.nvim_buf_get_mark(buf, "[")
-  return get_shell_cursor_offset(buf, mark)
-end
-
----Delete the range Vim resolved for the pending `g@` operator motion.
----@param motion_type string
-local function delete_operator_motion_range(motion_type)
-  -- `g@` stores the resolved motion range in `[ and `]. Delete that range
-  -- after Vim has handled the motion instead of reimplementing motions here.
-  vim.cmd("normal! " .. (motion_type == "line" and "`[V`]d" or "`[v`]d"))
-end
-
-local function keep_cursor_at_command_offset(buf, offset)
-  local cursor = get_buffer_location_from_shell_offset(buf, offset)
-  local clamped_cursor = clamp_cursor_to_editable_zone(buf, cursor)
-  move_cursor_if_needed(0, vim.api.nvim_win_get_cursor(0), clamped_cursor)
-end
-
-local function command_end_offset(buf)
-  return #terminal_buffer.command_text(buf, api.command_start_cursor(buf))
-end
-
-local function add_mark_at_command_offset(buf, offset)
-  local cursor = get_buffer_location_from_shell_offset(buf, offset)
-  vim.api.nvim_buf_set_mark(buf, "z", cursor[1], cursor[2], {})
-  return "`z"
-end
-
--- Motion used by `0` and `^`: jump to the first byte of the command.
-local function add_mark_to_command_start(buf)
-  return add_mark_at_command_offset(buf, 0)
-end
-
--- Motion used by `$`: jump to the last command byte, not the exclusive end.
-local function add_mark_to_command_last_byte(buf)
-  return add_mark_at_command_offset(buf, math.max(command_end_offset(buf) - 1, 0))
-end
-
--- Operator-pending `$` needs an explicit charwise range for wrapped commands.
-local function charwise_command_end_operator_motion(buf)
-  -- `g@` needs a real motion range. Jumping to a temporary mark gives Vim that
-  -- range; `v` forces charwise selection so multi-row wrapped commands are not
-  -- treated as linewise deletions.
-  return "v" .. add_mark_to_command_last_byte(buf)
-end
-
-local function move_to_command_start(buf)
-  keep_cursor_at_command_offset(buf, 0)
-end
-
-local function move_to_command_end(buf)
-  keep_cursor_at_command_offset(buf, math.max(command_end_offset(buf) - 1, 0))
-end
-
----Sync the deleted draft to the shell and continue in terminal insert mode.
----@param buf integer
----@param offset integer command offset where insert mode should continue
-local function enter_insert_at_command_offset(buf, offset)
-  M.write(buf, { cursor = offset })
-  vim.cmd.startinsert()
-end
-
----Delete the range captured by `g@` and run the pending after-delete callback.
----@param motion_type string
-function M.apply_delete_operator(motion_type)
-  local buf = vim.api.nvim_get_current_buf()
-  local offset = command_offset_at_operator_start(buf)
-  -- pending_after_delete_operator should handle keeping cursor at correct position
-  -- for c{motion}, this happens by going to 't' mode which clamps cursor
-  -- for d{motion}, we manually apply keep_cursor_at_command_offset
-  local after_delete = pending_after_delete_operator or keep_cursor_at_command_offset
-  pending_after_delete_operator = nil
-  mark_unsynced_edit(buf)
-  delete_operator_motion_range(motion_type)
-  after_delete(buf, offset)
-end
-
-function M.apply_yank_operator()
-  local buf = vim.api.nvim_get_current_buf()
-  local command = terminal_buffer.command_text(buf, api.command_start_cursor(buf))
-  local start_offset = command_offset_at_operator_start(buf)
-  -- `]` points at the last included byte; convert it to an exclusive end.
-  local end_offset = get_shell_cursor_offset(buf, vim.api.nvim_buf_get_mark(buf, "]")) + 1
-  if end_offset < start_offset then
-    start_offset, end_offset = end_offset, start_offset
-  end
-  vim.fn.setreg(vim.v.register, command:sub(start_offset + 1, math.min(end_offset, #command)), "V")
-  if pending_after_yank_cursor then
-    vim.api.nvim_win_set_cursor(0, pending_after_yank_cursor)
-    pending_after_yank_cursor = nil
-  end
-end
-
-local function start_delete_operator(after_delete)
-  -- `g@` lets Vim collect the motion range before `apply_delete_operator()`
-  -- handles shared delete-side effects and the key-specific follow-up.
-  pending_after_delete_operator = after_delete
-  vim.go.operatorfunc = DELETE_OPERATOR_FUNC
-  return "g@"
-end
-
-local function start_change_operator()
-  return start_delete_operator(enter_insert_at_command_offset)
-end
-
-local function start_yank_operator()
-  pending_after_yank_cursor = vim.api.nvim_win_get_cursor(0)
-  vim.go.operatorfunc = YANK_OPERATOR_FUNC
-  return "g@"
-end
-
----Handle terminal text changes with the concurrent-write guard.
----@param buf integer
-function M.handle_text_changed(buf)
-  local bufinfo = M.buffers[buf]
-  log.debug("integrated.text_changed", {
-    buf = buf,
-    sync_block_reason = bufinfo.sync_block_reason,
-    has_unsynced_edits = bufinfo.has_unsynced_edits,
-    line = vim.api.nvim_get_current_line(),
-  })
-  if not has_command_start_cursor(buf) then
-    log.debug("integrated.text_changed.skip", {
-      buf = buf,
-      sync_block_reason = bufinfo.sync_block_reason,
-      has_unsynced_edits = bufinfo.has_unsynced_edits,
-    })
-    return
-  end
-  if bufinfo.sync_block_reason == "term_leave" then
-    set_sync_block_reason(buf, nil)
-    log.debug("integrated.text_changed.skip", {
-      buf = buf,
-      sync_block_reason = bufinfo.sync_block_reason,
-      has_unsynced_edits = bufinfo.has_unsynced_edits,
-    })
-    return
-  end
-  if bufinfo.sync_block_reason == "write" or bufinfo.has_unsynced_edits then
-    log.debug("integrated.text_changed.skip", {
-      buf = buf,
-      sync_block_reason = bufinfo.sync_block_reason,
-      has_unsynced_edits = bufinfo.has_unsynced_edits,
-    })
-    return
-  end
-  M.write(buf)
-end
-
----Open the integrated terminal editor for the target terminal.
----@param ctx? table
----@return boolean opened
----Open the integrated terminal editor for the target terminal.
+---Open the current terminal command as a local terminal-buffer draft.
 ---@param ctx? table
 ---@return boolean opened
 function M.open(ctx)
   ctx = build_context(ctx)
-  local buf, win = ctx.target_buf, ctx.target_win
-  if not helpers.is_enabled_terminal(buf) then
-    error("termio: terminal buffer name does not match editor.terminal_name_pattern")
-  end
-  if helpers.is_editor_disabled(buf) then
-    log.debug("integrated.open.disabled", { buf = buf, win = win })
+  if helpers.is_editor_disabled(ctx.target_buf) then
     return false
   end
-  local buffer_state = helpers.ensure_buffer_state(api.buffers, buf)
-  buffer_state.shell_state = api.read_state(buf, win)
-  api.clear_completion_suggestions(buf)
-  log.debug("integrated.open", { buf = buf, win = win, shell_state = buffer_state.shell_state })
-  wait_until_command_is_rendered(buf, buffer_state.shell_state.command)
-  local cursor = vim.api.nvim_win_get_cursor(win)
-  cursor = move_cursor_back_to_editable_zone(buf, cursor, win, #buffer_state.shell_state.command)
-  refresh_integrated_state(buf, cursor, win)
+  if M.buffers[ctx.target_buf].editing then
+    vim.cmd.stopinsert()
+    return true
+  end
+  api.read(function(command)
+    api.wait_for_terminal_change(api.get_cache(ctx.target_buf), function()
+      vim.cmd.stopinsert()
+      start_editing(ctx, command)
+    end)
+  end)
   return true
 end
 
-local function map_config_keymaps(buf)
-  local buffer_state = M.buffers[buf]
-  local handlers = {
-    open = function(lhs)
-      return function()
-        log.debug("integrated.key.open", { buf = buf, mode = vim.api.nvim_get_mode().mode })
-        return run_termio_action(buf, "integrated.key.open", function()
-          vim.cmd("stopinsert")
-        end, helpers.term_codes(lhs))
-      end
+---Write the local draft back to the cleared shell input.
+---@param buf integer
+---@return string command
+function M.write(buf)
+  local command = command_text(buf)
+  M.buffers[buf].editing = false
+  vim.bo[buf].modifiable = false
+  api.write(command, buf)
+  return command
+end
+
+local function finish_editing(buf, submit)
+  M.write(buf)
+  if submit then
+    api.send(api.get_cache(buf), "\r")
+  end
+  vim.cmd.startinsert()
+end
+
+local function clear_draft(buf)
+  local start = command_start(buf)
+  local last = api.get_cache(buf).command_end
+  local last_line = vim.api.nvim_buf_get_lines(buf, last[1] - 1, last[1], false)[1]
+  last = { last[1], #last_line }
+  vim.api.nvim_buf_set_text(buf, start[1] - 1, start[2], last[1] - 1, last[2], { "" })
+  api.get_cache(buf).command_end = start
+  vim.api.nvim_win_set_cursor(0, start)
+end
+
+local function run_action(buf, action)
+  if helpers.is_editor_disabled(buf) then
+    return
+  end
+  action()
+end
+
+local function configured_handlers(buf)
+  return {
+    open = function()
+      M.open({ target_buf = buf })
     end,
     submit = function()
-      return run_termio_action(buf, "integrated.key.submit", function()
-        local mode = vim.api.nvim_get_mode().mode
-        log.debug("integrated.key.submit", { buf = buf, mode = mode })
-        if mode:sub(1, 1) == "t" then
-          helpers.send_keys("<CR>", buf)
-        else
-          M.write(buf)
-          helpers.send_keys("<CR>", buf)
-        end
-        vim.cmd("startinsert")
-      end)
+      if M.buffers[buf].editing then
+        finish_editing(buf, true)
+      else
+        api.send(api.get_cache(buf), "\r")
+      end
+    end,
+    clear = function()
+      if M.buffers[buf].editing then
+        clear_draft(buf)
+      else
+        api.send(api.get_cache(buf), "\5\21")
+      end
     end,
     write = function()
-      return run_termio_action(buf, "integrated.key.write", function()
-        log.debug("integrated.key.write", { buf = buf, mode = vim.api.nvim_get_mode().mode })
-        M.write(buf)
-      end)
+      if M.buffers[buf].editing then
+        finish_editing(buf, false)
+      end
+    end,
+    save_and_close = function()
+      finish_editing(buf, false)
     end,
     toggle = function()
-      log.debug("integrated.key.toggle", { buf = buf, mode = vim.api.nvim_get_mode().mode })
       require("termio").toggle()
     end,
   }
-  for lhs, action in pairs(config.options.editor.keys.t) do
-    local handler = action == "open" and handlers.open(lhs) or handlers[action]
-    if handler then
-      if action == "toggle" then
-        buffer_state.keymaps:always("t", lhs, handler)
-      else
-        buffer_state.keymaps:map("t", lhs, handler)
-      end
-    end
-  end
-  for lhs, action in pairs(config.options.editor.keys.n) do
-    local handler = handlers[action]
-    if handler then
-      if action == "toggle" then
-        buffer_state.keymaps:always("n", lhs, handler)
-      else
-        buffer_state.keymaps:map("n", lhs, handler)
+end
+
+local function map_config_keymaps(buf)
+  local state = M.buffers[buf]
+  local handlers = configured_handlers(buf)
+  for mode, mappings in pairs(config.options.editor.keys) do
+    for lhs, name in pairs(mappings) do
+      local handler = handlers[name]
+      if handler then
+        local map = function()
+          run_action(buf, handler)
+        end
+        if name == "toggle" then
+          state.keymaps:always(mode, lhs, map)
+        else
+          state.keymaps:map(mode, lhs, map)
+        end
       end
     end
   end
 end
 
-local function log_integrated_key(event, buf)
-  log.debug(event, { buf = buf, cursor = vim.api.nvim_win_get_cursor(0) })
-end
-
--- Enter terminal insert mode at Vim-like insertion targets.
 local function map_insert_keymaps(buf)
-  local insert_targets = {
-    A = {
-      cursor = function(current)
-        return #current.command
-      end,
-    },
-    I = { cursor = 0 },
-    i = false,
-    a = {
-      cursor = function(current)
-        return current.cursor + 1
-      end,
-    },
-  }
-  for lhs, target in pairs(insert_targets) do
-    set_termio_keymap(buf, "n", lhs, "integrated.key." .. lhs, function()
-      log_integrated_key("integrated.key." .. lhs, buf)
-      enter_insert_with_target(buf, target or nil)
+  for _, lhs in ipairs({ "i", "a", "I", "A" }) do
+    M.buffers[buf].keymaps:map("n", lhs, function()
+      run_action(buf, function()
+        if M.buffers[buf].editing then
+          finish_editing(buf, false)
+        else
+          vim.cmd.startinsert()
+        end
+      end)
     end)
   end
 end
 
--- Apply immediate normal-mode edits that do not need a motion.
-local function map_normal_edit_keymaps(buf)
-  local normal_edits = {
-    x = function()
-      mark_unsynced_edit(buf)
-      vim.cmd("normal! x")
-    end,
-    p = function()
-      mark_unsynced_edit(buf)
-      paste_register_into_integrated_buffer(true)
-    end,
-    P = function()
-      mark_unsynced_edit(buf)
-      paste_register_into_integrated_buffer(false)
-    end,
+local function register_terminal(buf)
+  vim.bo[buf].filetype = config.options.editor.filetype
+  vim.b[buf].termio_editor = "integrated"
+  M.buffers[buf] = {
+    editing = false,
+    keymaps = keymaps.group({ buffer = buf, enabled = not helpers.is_editor_disabled(buf) }),
   }
-  for lhs, action in pairs(normal_edits) do
-    set_termio_keymap(buf, "n", lhs, "integrated.key." .. lhs, function()
-      log_integrated_key("integrated.key." .. lhs, buf)
-      action()
-    end)
-  end
-end
-
-local function map_normal_motion_keymaps(buf)
-  local normal_motions =
-    { ["0"] = move_to_command_start, ["^"] = move_to_command_start, ["$"] = move_to_command_end }
-  for lhs, action in pairs(normal_motions) do
-    set_termio_keymap(buf, "n", lhs, "integrated.key." .. lhs, function()
-      log_integrated_key("integrated.key." .. lhs, buf)
-      action(buf)
-    end)
-  end
-end
-
-local function map_operator_pending_motion_keymaps(buf)
-  local operator_motions = {
-    ["0"] = add_mark_to_command_start,
-    ["^"] = add_mark_to_command_start,
-    ["$"] = charwise_command_end_operator_motion,
-  }
-  for lhs, action in pairs(operator_motions) do
-    set_termio_keymap(buf, "o", lhs, "integrated.key.operator_" .. lhs, function()
-      log_integrated_key("integrated.key.operator_" .. lhs, buf)
-      return action(buf)
-    end, { expr = true })
-  end
-end
-
-local function map_visual_motion_keymaps(buf)
-  local visual_motions = {
-    ["0"] = add_mark_to_command_start,
-    ["^"] = add_mark_to_command_start,
-    ["$"] = add_mark_to_command_last_byte,
-  }
-  for lhs, action in pairs(visual_motions) do
-    set_termio_keymap(buf, "x", lhs, "integrated.key.visual_" .. lhs, function()
-      log_integrated_key("integrated.key.visual_" .. lhs, buf)
-      return action(buf)
-    end, { expr = true })
-  end
-end
-
--- Start Vim's operator flow for normal-mode delete/change commands.
-local function map_normal_operator_keymaps(buf)
-  local normal_operators = {
-    dd = {
-      start = function()
-        return "0d$"
-      end,
-      motion = function()
-        return ""
-      end,
-      remap = true,
-    },
-    d = {
-      start = start_delete_operator,
-      motion = function()
-        return ""
-      end,
-    },
-    D = {
-      start = start_delete_operator,
-      motion = function()
-        return "$"
-      end,
-      remap = true,
-    },
-    c = {
-      start = start_change_operator,
-      motion = function()
-        return ""
-      end,
-    },
-    C = {
-      start = start_change_operator,
-      motion = function()
-        return "$"
-      end,
-      remap = true,
-    },
-    s = {
-      start = start_change_operator,
-      motion = function()
-        return vim.v.count1 .. "l"
-      end,
-    },
-    yy = {
-      start = function()
-        return "0" .. start_yank_operator() .. "$"
-      end,
-      motion = function()
-        return ""
-      end,
-      remap = true,
-    },
-  }
-  for lhs, operator in pairs(normal_operators) do
-    set_termio_keymap(buf, "n", lhs, "integrated.key." .. lhs, function()
-      log_integrated_key("integrated.key." .. lhs, buf)
-      return operator.start() .. operator.motion()
-    end, { expr = true, remap = operator.remap })
-  end
-end
-
-local function map_visual_operator_keymaps(buf)
-  -- Visual mode already has a selected range, so no extra motion suffix is needed.
-  for _, lhs in ipairs({ "c", "s" }) do
-    set_termio_keymap(buf, "x", lhs, "integrated.key.visual_" .. lhs, function()
-      log_integrated_key("integrated.key.visual_" .. lhs, buf)
-      return start_change_operator()
-    end, { expr = true })
-  end
-end
-
--- Replace a visual selection with the selected paste register.
-local function map_visual_paste_keymaps(buf)
-  local visual_pastes = { p = true, P = false }
-  for lhs, after in pairs(visual_pastes) do
-    set_termio_keymap(buf, "x", lhs, "integrated.key.visual_" .. lhs, function()
-      log_integrated_key("integrated.key.visual_" .. lhs, buf)
-      paste_register_over_visual_selection(after)
-    end)
-  end
-end
-
-local function map_integrated_keymaps(buf)
+  map_config_keymaps(buf)
   map_insert_keymaps(buf)
-  map_normal_edit_keymaps(buf)
-  map_normal_motion_keymaps(buf)
-  map_operator_pending_motion_keymaps(buf)
-  map_visual_motion_keymaps(buf)
-  map_normal_operator_keymaps(buf)
-  map_visual_operator_keymaps(buf)
-  map_visual_paste_keymaps(buf)
+  local group = vim.api.nvim_create_augroup("termio-integrated-" .. buf, { clear = true })
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = group,
+    buffer = buf,
+    once = true,
+    callback = function()
+      M.buffers[buf] = nil
+      pcall(vim.api.nvim_del_augroup_by_id, group)
+    end,
+  })
 end
 
 function M.enable()
-  for _, buffer_state in pairs(M.buffers or {}) do
-    buffer_state.keymaps:enable()
+  for _, state in pairs(M.buffers) do
+    state.keymaps:enable()
   end
 end
 
 function M.disable()
-  for _, buffer_state in pairs(M.buffers or {}) do
-    buffer_state.keymaps:disable()
+  for _, state in pairs(M.buffers) do
+    state.keymaps:disable()
   end
 end
 
-M.setup = function()
-  M.buffers = M.buffers or {}
+function M.setup()
   vim.api.nvim_create_autocmd("TermOpen", {
-    group = vim.api.nvim_create_augroup("integrated-term", {}),
+    group = vim.api.nvim_create_augroup("termio-integrated", { clear = true }),
     callback = function(args)
-      if not helpers.is_enabled_terminal(args.buf) then
-        return
+      if helpers.is_enabled_terminal(args.buf) then
+        register_terminal(args.buf)
       end
-      vim.bo[args.buf].filetype = config.options.editor.filetype
-      vim.b[args.buf].termio_editor = "integrated"
-      M.buffers[args.buf] = {
-        has_unsynced_edits = false,
-        keymaps = keymaps.group({
-          buffer = args.buf,
-          enabled = not helpers.is_editor_disabled(args.buf),
-        }),
-        sync_block_reason = "term_leave",
-      }
-      log.debug("integrated.term_open", { buf = args.buf })
-      map_config_keymaps(args.buf)
-      map_integrated_keymaps(args.buf)
-      local editgroup =
-        vim.api.nvim_create_augroup("integrated-term-text-change" .. args.buf, { clear = true })
-      vim.api.nvim_create_autocmd("TextChanged", {
-        buffer = args.buf,
-        group = editgroup,
-        callback = function(args)
-          M.handle_text_changed(args.buf)
-        end,
-      })
-      vim.api.nvim_create_autocmd("TermLeave", {
-        group = editgroup,
-        buffer = args.buf,
-        callback = function(args)
-          -- Any TextChanged immediately after leaving terminal mode may come
-          -- from the mode switch or shell redraw instead of a deliberate edit.
-          set_sync_block_reason(args.buf, "term_leave")
-          log.debug("integrated.term_leave", { buf = args.buf })
-          local ok, opened = pcall(M.open, { target_buf = args.buf })
-          if not ok then
-            log.debug("integrated.open.failed", { buf = args.buf, error = opened })
-          end
-        end,
-      })
-      vim.api.nvim_create_autocmd("BufDelete", {
-        group = editgroup,
-        buffer = args.buf,
-        callback = function(args)
-          M.buffers[args.buf] = nil
-          vim.api.nvim_del_augroup_by_id(editgroup)
-        end,
-      })
-      vim.api.nvim_create_autocmd("CursorMoved", {
-        group = editgroup,
-        buffer = args.buf,
-        callback = function(args)
-          if M.buffers[args.buf].sync_block_reason == "term_leave" then
-            return
-          end
-          refresh_integrated_state(args.buf, vim.api.nvim_win_get_cursor(0))
-        end,
-      })
     end,
   })
 end
+
 return M

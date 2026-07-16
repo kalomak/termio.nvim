@@ -2,18 +2,6 @@ local M = {}
 
 local root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h")
 
-local function get_api()
-  return require("termio.api")
-end
-
-local function get_config()
-  return require("termio.config")
-end
-
-local function get_helpers()
-  return require("termio.util.helpers")
-end
-
 local function inspect_text(value)
   if value == nil or value == "" then
     return "-"
@@ -25,10 +13,9 @@ local function inspect_text(value)
   text = text:gsub("^[ \t]+", function(space)
     return space:gsub(".", edge_marker)
   end)
-  text = text:gsub("[ \t]+$", function(space)
+  return text:gsub("[ \t]+$", function(space)
     return space:gsub(".", edge_marker)
   end)
-  return text
 end
 
 local function format_cursor(cursor)
@@ -38,117 +25,97 @@ local function format_cursor(cursor)
   return string.format("%s:%s", cursor[1] or "-", cursor[2] or "-")
 end
 
-local function format_debug_cursor(cursor)
+local function debug_cursor(cursor)
   local value = format_cursor(cursor)
-  if type(value) == "number" then
-    return string.format("%2d", value)
-  end
-  return string.format("%2s", tostring(value))
-end
-
-local function read_buffer_state(buf, win)
-  local api = get_api()
-  local command_state = get_helpers().ensure_buffer_state(api.buffers, buf).shell_state
-  return {
-    command = command_state.command,
-    cursor = api.cursor_index_in_command(win, buf),
-  }
-end
-
-local function find_editor_window()
-  for _, win in ipairs(vim.api.nvim_list_wins()) do
-    local buf = vim.api.nvim_win_get_buf(win)
-    if vim.bo[buf].filetype == "termio" then
-      return win, buf
-    end
-  end
+  return string.format(type(value) == "number" and "%2d" or "%2s", value)
 end
 
 local function get_log_path()
-  if vim.o.verbosefile ~= "" then
-    return vim.o.verbosefile
-  end
-  return root .. "/tmp/dev.out"
+  return vim.o.verbosefile ~= "" and vim.o.verbosefile or root .. "/tmp/dev.out"
 end
 
 function M.collect()
-  local terminal = _G.termio_debug and _G.termio_debug.terminal or {}
-  local shell = { command = "missing terminal", cursor = { "-", "-" } }
-  local target = { active = false, cursor = "-", command = "-" }
-  local buffer = { cursor = "-", command = "missing terminal" }
-  local config = get_config()
-  local options = config.options or config.defaults
-  local editor_options = config.options and config.options.editor or config.defaults.editor
-  if terminal.buf and vim.api.nvim_buf_is_valid(terminal.buf) then
-    local api = get_api()
-    local buf_state = get_helpers().ensure_buffer_state(api.buffers, terminal.buf)
-    local visible = nil
-    if buf_state.prompt_end_cursor and terminal.win and vim.api.nvim_win_is_valid(terminal.win) then
-      visible = read_buffer_state(terminal.buf, terminal.win)
-    end
-    local shell_state = buf_state.shell_state
-    buffer.cursor = visible and visible.cursor or "-"
-    buffer.command = visible and visible.command or "missing prompt"
-    shell = {
-      cursor = shell_state and shell_state.cursor or "-",
-      command = shell_state and shell_state.command or "-",
-    }
-    target.active = vim.api.nvim_get_option_value("modifiable", { buf = terminal.buf })
+  local api = _G.termio_debug and _G.termio_debug.standalone or require("termio.api")
+  local cache = api.terminals[vim.api.nvim_get_current_buf()]
+  if not cache then
+    local _, first_cache = next(api.terminals)
+    cache = first_cache
   end
-  local editor_win, editor_buf = find_editor_window()
-  target.type = editor_options.type
-  target.buf = editor_buf
-  target.win = editor_win
-  if editor_buf and editor_win then
-    target.cursor = vim.api.nvim_win_get_cursor(editor_win)
-    target.command = table.concat(vim.api.nvim_buf_get_lines(editor_buf, 0, -1, false), "\n")
-    target.active = true
+  cache = cache or { command = {} }
+  local terminal_text, channel = "-", "-"
+  if cache.target_buf and vim.api.nvim_buf_is_valid(cache.target_buf) then
+    channel = vim.bo[cache.target_buf].channel
   end
+  if cache.target_win and vim.api.nvim_win_is_valid(cache.target_win) then
+    terminal_text = table.concat(api.read_terminal_state(cache).lines, "\n")
+  end
+  local editor_text, editor_cursor = "-", "-"
+  if cache.edit_buf and vim.api.nvim_buf_is_valid(cache.edit_buf) then
+    editor_text = table.concat(vim.api.nvim_buf_get_lines(cache.edit_buf, 0, -1, false), "\n")
+  end
+  if cache.edit_win and vim.api.nvim_win_is_valid(cache.edit_win) then
+    editor_cursor = vim.api.nvim_win_get_cursor(cache.edit_win)
+  end
+  local config = require("termio.config")
+  local editor = (config.options or config.defaults).editor
   return {
-    terminal = terminal,
-    shell = shell,
-    target = target,
-    buffer = buffer,
+    options = vim.tbl_extend(
+      "keep",
+      api.options,
+      { key = editor.open, filetype = editor.filetype }
+    ),
+    cache = cache,
+    channel = channel,
+    terminal_text = terminal_text,
+    editor_text = editor_text,
+    editor_cursor = editor_cursor,
   }
 end
 
 function M.render_lines(snapshot)
+  local cache = snapshot.cache
   return {
     string.format(
-      "target: type=%s active=%s mode=%s term=%s/%s/%s buf=%s win=%s",
-      snapshot.target.type or "-",
-      tostring(snapshot.target.active),
+      "probe: mode=%s key=%s filetype=%s poll=%sms timeout=%sms",
       vim.api.nvim_get_mode().mode,
-      snapshot.terminal.buf or "-",
-      snapshot.terminal.win or "-",
-      snapshot.terminal.chan or "-",
-      snapshot.target.buf or "-",
-      snapshot.target.win or "-"
+      snapshot.options.key,
+      snapshot.options.filetype,
+      snapshot.options.poll_ms,
+      snapshot.options.timeout_ms
     ),
     string.format(
-      "buffer: %s cmd: %s",
-      format_debug_cursor(snapshot.buffer.cursor),
-      inspect_text(snapshot.buffer.command)
+      "handles: term=%s/%s/%s editor=%s/%s",
+      cache.target_buf or "-",
+      cache.target_win or "-",
+      snapshot.channel,
+      cache.edit_buf or "-",
+      cache.edit_win or "-"
     ),
     string.format(
-      "shell : %s cmd: %s",
-      format_debug_cursor(snapshot.shell.cursor),
-      inspect_text(snapshot.shell.command)
+      "state  : %s cmd: %s",
+      debug_cursor(cache.command.cursor),
+      inspect_text(cache.command.text)
     ),
+    string.format("prompt : row=%s text: %s", cache.prompt_row or "-", inspect_text(cache.prompt)),
     string.format(
-      "target: %s cmd: %s",
-      format_debug_cursor(snapshot.target.cursor),
-      inspect_text(snapshot.target.command)
+      "parts  : original=%s start=%s end=%s current=%s",
+      format_cursor(cache.original_cursor),
+      format_cursor(cache.command_start),
+      format_cursor(cache.command_end),
+      format_cursor(cache.terminal_cursor)
+    ),
+    string.format("terminal: %s", inspect_text(snapshot.terminal_text)),
+    string.format(
+      "editor : %s text: %s",
+      format_cursor(snapshot.editor_cursor),
+      inspect_text(snapshot.editor_text)
     ),
   }
 end
 
 function M.snapshot_lines(label)
   local lines = M.render_lines(M.collect())
-  if not label or label == "" then
-    return lines
-  end
-  return vim.list_extend({ "status: " .. label }, lines)
+  return label and label ~= "" and vim.list_extend({ "status: " .. label }, lines) or lines
 end
 
 function M.dump(label)

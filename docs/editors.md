@@ -1,13 +1,8 @@
-Default editor: `integrated`.
+# Editors
 
-## `./overlay-editor.md`
+- `minimal`: smallest centered popup, bundled directly around the probe API.
+- `centered`: configurable centered prompt-buffer editor.
+- `overlay`: shared prompt-buffer editor positioned over the terminal command.
+- `integrated`: local draft painted into the terminal buffer until save or submit.
 
-This editor is a separate window/buffer from the terminal.
-Uses `buftype='prompt'`, includes the shell prompt in the first line, and opens in normal mode.
-It is the smoothest editing experience but it requires complexity to handle:
-- changing buffer when in the editor window
-- moving seamlessly in and out of the window when navigating the terminal
-
-## `./integrated-editor.md`
-
-This editor integrates to the terminal buffer directly. Pros: no extra window, cons: hacky, needs to fight with pty over the buffer state.
+All editors use the same asynchronous probe: reading clears shell input, and closing writes one command back.

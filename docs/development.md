@@ -43,21 +43,15 @@ Debug output: `./tmp/dev.out`.
 
 Targeted test:
 ```sh
-sh ./run_filtered_tests.sh tests/test_API.lua 'read_command'
+sh ./run_filtered_tests.sh tests/test_probe_api.lua 'reads command'
 ```
 
 Run all tests:
 
 ```sh
 make test
-make test-bash
-make test-fish
 ```
 
 Tests write debug output to `./tmp/test.out`.
-
-Env vars:
-
-- `TERMIO_TEST_SHELL=(bash|fish|zsh)`
 
 Read some existing tests before writing new ones. Testing requires a lot of quirks since almost everything is async when working with the terminal.

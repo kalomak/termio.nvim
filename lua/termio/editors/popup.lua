@@ -1,38 +1,22 @@
-local config = require("termio.config")
+local api = require("termio.api")
 local autoresize = require("termio.editors.autoresize")
-local editable_zone = require("termio.editable_zone")
+local config = require("termio.config")
 local fixbuf = require("termio.editors.fixbuf")
 local helpers = require("termio.util.helpers")
 local keymaps = require("termio.util.keymaps")
-local open_on_focus = require("termio.editors.open_on_focus")
 local terminal_buffer = require("termio.terminal_buffer")
 
 local M = {}
 
 function M.new(opts)
-  opts = opts or {}
-  opts.write = opts.write or function(edit_buf)
-    M.write_current(opts.buffers, edit_buf)
-  end
-  opts.open = opts.open or function(ctx)
-    return M.open(opts, ctx)
-  end
-  return setmetatable(opts, { __index = M })
+  return setmetatable(opts or {}, { __index = M })
 end
 
 function M:build_context(ctx)
   ctx = ctx or {}
-  ctx.target_buf = helpers.current_buf(ctx.target_buf)
+  ctx.target_buf = ctx.target_buf or vim.api.nvim_get_current_buf()
   ctx.target_win = ctx.target_win or vim.fn.bufwinid(ctx.target_buf)
   return ctx
-end
-
-local function api()
-  return require("termio.api")
-end
-
-function M.is_first_visual_line()
-  return vim.fn.winline() == 1
 end
 
 function M.apply_window_style(win)
@@ -46,52 +30,30 @@ function M.feed_key(key, mode)
   vim.api.nvim_feedkeys(helpers.term_codes(key), mode, false)
 end
 
-function M.command_lines(command)
-  return vim.split(command, "\n", { plain = true })
-end
-
-function M:prepare_data(ctx)
-  local prompt = M.terminal_prompt_text(ctx.target_buf)
-  local shell = api().read_state(ctx.target_buf, ctx.target_win)
+---@param ctx table
+---@param command CommandState
+---@return table
+function M:prepare_data(ctx, command)
+  local prompt = api.get_cache(ctx.target_buf).prompt
+  ctx.original_command = command.text
   return {
     prompt = prompt,
-    shell = shell,
-    cursor = ctx.cursor or shell.cursor,
-    lines = M.command_lines(prompt .. shell.command),
+    command = command,
+    cursor = ctx.cursor or command.cursor,
+    lines = vim.split(prompt .. command.text, "\n", { plain = true }),
   }
-end
-
-function M.command_text(buf, start_cursor)
-  return table.concat(terminal_buffer.command_rows(buf, start_cursor), "\n")
 end
 
 function M.prompt_start_cursor(buf)
   return { 1, #vim.fn.prompt_getprompt(buf) }
 end
 
-function M.terminal_prompt_text(buf)
-  api().update_prompt_range(buf)
-  local prompt_start, prompt_end = api().prompt_range(buf)
-  if not prompt_start or not prompt_end then
-    error("termio: missing prompt range")
-  end
-  local line = terminal_buffer.command_rows(buf, prompt_start, true)[1] or ""
-  return line:sub(1, prompt_end[2] - prompt_start[2])
-end
-
-function M.cursor_index(buf, win, start_cursor)
-  return terminal_buffer.cursor_index_from_start_cursor(
-    vim.api.nvim_win_get_cursor(win),
-    buf,
-    start_cursor
-  )
+function M.command_text(buf)
+  return table.concat(terminal_buffer.command_rows(buf, M.prompt_start_cursor(buf)), "\n")
 end
 
 function M.normal_cursor_offset(command, cursor)
-  if cursor then
-    return math.min(cursor, math.max(#command - 1, 0))
-  end
-  return math.max(#command - 1, 0)
+  return math.min(cursor or #command, math.max(#command - 1, 0))
 end
 
 function M.set_initial_cursor(edit_buf, edit_win, command, cursor)
@@ -103,34 +65,6 @@ function M.set_initial_cursor(edit_buf, edit_win, command, cursor)
       M.normal_cursor_offset(command, cursor)
     )
   )
-end
-
-function M.write_command(ctx, edit_buf, edit_win, cursor)
-  local start_cursor = M.prompt_start_cursor(edit_buf)
-  local target_cursor = cursor
-  if target_cursor == nil and vim.api.nvim_win_is_valid(edit_win) then
-    target_cursor = M.cursor_index(edit_buf, edit_win, start_cursor)
-  end
-  api().write_command(M.command_text(edit_buf, start_cursor), ctx.target_buf, target_cursor)
-  if target_cursor and vim.api.nvim_win_is_valid(ctx.target_win) then
-    vim.api.nvim_win_set_cursor(
-      ctx.target_win,
-      terminal_buffer.location_from_offset(
-        ctx.target_buf,
-        api().command_start_cursor(ctx.target_buf),
-        target_cursor
-      )
-    )
-  end
-end
-
-function M.write_current(buffers, edit_buf)
-  edit_buf = edit_buf or vim.api.nvim_get_current_buf()
-  M.write_command(buffers[edit_buf], edit_buf, vim.api.nvim_get_current_win())
-end
-
-function M:write(edit_buf)
-  M.write_current(self.buffers, edit_buf)
 end
 
 function M.clear(edit_buf, edit_win)
@@ -176,68 +110,59 @@ function M.close(buffers, edit_buf, ctx, edit_win)
   buffers[edit_buf] = nil
 end
 
-function M.submit(buffers, edit_buf, ctx, edit_win)
-  api().write_command(
-    M.command_text(edit_buf, M.prompt_start_cursor(edit_buf)),
-    ctx.target_buf,
-    nil
-  )
-  helpers.send_keys("<CR>", ctx.target_buf)
+local function finish(buffers, edit_buf, ctx, edit_win, command, submit)
   M.close(buffers, edit_buf, ctx, edit_win)
-  vim.schedule(function()
-    M.focus_target(ctx)
-    vim.cmd.stopinsert()
-    vim.cmd.startinsert()
-  end)
+  api.write(command, ctx.target_buf)
+  if submit then
+    api.send(api.get_cache(ctx.target_buf), "\r")
+  end
 end
 
 function M.action_handlers(opts)
-  local function write()
-    M.write_command(opts.ctx, opts.edit_buf, opts.edit_win)
+  local function save(submit)
+    finish(
+      opts.buffers,
+      opts.edit_buf,
+      opts.ctx,
+      opts.edit_win,
+      M.command_text(opts.edit_buf),
+      submit
+    )
   end
-  local function pass_through_insert(key)
-    write()
-    M.close(opts.buffers, opts.edit_buf, opts.ctx, opts.edit_win)
-    vim.schedule(function()
-      M.focus_target(opts.ctx)
-      vim.cmd.startinsert()
-      M.feed_key(key, "t")
-    end)
-  end
-  local function pass_through_normal(key)
-    write()
-    M.close(opts.buffers, opts.edit_buf, opts.ctx, opts.edit_win)
-    M.feed_key(key, "n")
+  local function pass_through(key, mode)
+    save(false)
+    vim.cmd.startinsert()
+    M.feed_key(key, mode)
   end
   return {
     submit = function()
-      M.submit(opts.buffers, opts.edit_buf, opts.ctx, opts.edit_win)
+      save(true)
+      vim.cmd.startinsert()
     end,
     clear = function()
       M.clear(opts.edit_buf, opts.edit_win)
     end,
-    write = write,
+    write = function()
+      save(false)
+    end,
     save_and_close = function()
-      write()
-      M.close(opts.buffers, opts.edit_buf, opts.ctx, opts.edit_win)
+      save(false)
     end,
     close = function()
-      M.close(opts.buffers, opts.edit_buf, opts.ctx, opts.edit_win)
+      finish(opts.buffers, opts.edit_buf, opts.ctx, opts.edit_win, opts.ctx.original_command)
       vim.cmd.startinsert()
     end,
     toggle = opts.toggle,
-    pass_through_insert = pass_through_insert,
-    pass_through_normal = pass_through_normal,
+    pass_through_insert = function(key)
+      pass_through(key, "t")
+    end,
+    pass_through_normal = function(key)
+      pass_through(key, "n")
+    end,
     down = function()
       vim.cmd("normal! gj")
     end,
     up = function()
-      local mode = vim.api.nvim_get_mode().mode
-      local first_visual_line = M.is_first_visual_line()
-      if mode == "n" and first_visual_line then
-        pass_through_normal("k")
-        return
-      end
       vim.cmd("normal! gk")
     end,
   }
@@ -271,38 +196,38 @@ function M:create_buffer(data)
   return edit_buf
 end
 
+---@param ctx? table
+---@return boolean opened
 function M:open(ctx)
   ctx = self:build_context(ctx)
   if helpers.is_editor_disabled(ctx.target_buf) then
     return false
   end
-  vim.cmd.stopinsert()
-  local data = self:prepare_data(ctx)
-  local edit_buf, edit_win = self:create_editor_window(ctx, data)
-  M.apply_window_style(edit_win)
-  M.set_initial_cursor(edit_buf, edit_win, data.shell.command, data.cursor)
-  self:register({
-    edit_buf = edit_buf,
-    edit_win = edit_win,
-    ctx = ctx,
-    max_height = self:max_height(ctx, edit_win),
-  })
-  if self.after_open then
-    self:after_open(ctx, edit_buf, edit_win)
-  end
-  return edit_buf
+  api.read(function(command)
+    vim.cmd.stopinsert()
+    local data = self:prepare_data(ctx, command)
+    local edit_buf, edit_win = self:create_editor_window(ctx, data)
+    M.apply_window_style(edit_win)
+    M.set_initial_cursor(edit_buf, edit_win, command.text, data.cursor)
+    self:register({
+      edit_buf = edit_buf,
+      edit_win = edit_win,
+      ctx = ctx,
+      max_height = self:max_height(ctx, edit_win),
+    })
+    if self.after_open then
+      self:after_open(ctx, edit_buf, edit_win)
+    end
+  end)
+  return true
 end
 
----Register shared popup editor features.
----@param opts table
 function M.register_buffer(opts)
   opts.buffers[opts.edit_buf] = vim.tbl_extend("force", opts.ctx, { edit_win = opts.edit_win })
   opts.buffers[opts.edit_buf].keymaps = M.apply_keymaps(opts.edit_buf, opts.handlers)
   autoresize.register(opts.edit_buf, opts.edit_win, opts.max_height)
   fixbuf.register(opts.edit_buf, opts.edit_win, opts.ctx.target_win)
-  if vim.bo[opts.edit_buf].buftype == "prompt" then
-    register_cursor_clamp(opts.edit_buf)
-  end
+  register_cursor_clamp(opts.edit_buf)
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer = opts.edit_buf,
     callback = function()
@@ -313,22 +238,19 @@ end
 
 function M:register(opts)
   opts.buffers = self.buffers
-  opts.handlers = opts.handlers or self:handlers(opts.ctx, opts.edit_buf, opts.edit_win)
+  opts.handlers = self:handlers(opts.ctx, opts.edit_buf, opts.edit_win)
   M.register_buffer(opts)
 end
 
 local function map_editor_keys(group, handlers)
   for _, source in ipairs({ config.options.editor.keys, config.options.editor.popup.keys }) do
     for mode, mappings in pairs(source or {}) do
-      if type(mappings) == "table" then
-        for lhs, action in pairs(mappings) do
-          if type(action) == "string" and action ~= "open" then
-            local handler = handlers[action]
-            assert(handler, "termio: unknown popup key action: " .. tostring(action))
-            group:map(mode, lhs, function()
-              handler(lhs)
-            end)
-          end
+      for lhs, action in pairs(type(mappings) == "table" and mappings or {}) do
+        if type(action) == "string" and action ~= "open" then
+          local handler = assert(handlers[action], "termio: unknown popup key action: " .. action)
+          group:map(mode, lhs, function()
+            handler(lhs)
+          end)
         end
       end
     end
@@ -347,21 +269,8 @@ local function map_pass_through_keys(group, handlers)
       handlers.pass_through_normal(key)
     end)
   end
-  for _, key in ipairs(options.pass_through_normal_keys_first_line or {}) do
-    group:map("n", key, function()
-      if M.is_first_visual_line() then
-        handlers.pass_through_normal(key)
-        return
-      end
-      vim.cmd("normal! " .. key)
-    end)
-  end
 end
 
----Apply shared popup editor keymaps.
----@param edit_buf integer
----@param handlers table<string, function>
----@return table
 function M.apply_keymaps(edit_buf, handlers)
   local group = keymaps.group({ buffer = edit_buf })
   map_editor_keys(group, handlers)
@@ -369,117 +278,25 @@ function M.apply_keymaps(edit_buf, handlers)
   return group
 end
 
----Map terminal keys that open a popup editor.
----@param buf integer Terminal buffer where keymaps are installed.
----@param group table Buffer-local keymap group receiving the mappings.
----@param open function Callback that opens the editor for `buf`.
----@param opts? table Optional mapping settings: `modes`, `stopinsert`, `stopinsert_modes`.
----@return table
-function M.apply_terminal_open_keymaps(buf, group, open, opts)
-  opts = opts or {}
-  local modes = opts.modes or { "t" }
-  for _, mode in ipairs(modes) do
-    local map = function()
-      if opts.stopinsert or (opts.stopinsert_modes and opts.stopinsert_modes[mode]) then
-        vim.cmd.stopinsert()
-      end
-      open({ target_buf = buf, target_win = vim.fn.bufwinid(buf) })
-    end
-    group:map(mode, config.options.editor.open, map)
-  end
-  return group
-end
-
----Return visual selection offsets relative to the terminal command start.
----@param buf integer Terminal buffer containing the visual selection.
----@return { first: integer, last: integer }
-local function terminal_visual_offsets(buf)
-  local command_start = api().command_start_cursor(buf)
-  local range = helpers.visual_range()
-  return {
-    first = terminal_buffer.cursor_index_from_start_cursor(range.first, buf, command_start),
-    last = terminal_buffer.cursor_index_from_start_cursor(range.last, buf, command_start),
-  }
-end
-
----Restore visual selection in the popup editor from command-relative offsets.
----@param edit_buf integer Popup prompt buffer receiving the visual selection.
----@param offsets { first: integer, last: integer } Command-relative selection offsets.
-local function restore_editor_visual_offsets(edit_buf, offsets)
-  local prompt_start = M.prompt_start_cursor(edit_buf)
-  helpers.restore_visual_range({
-    first = terminal_buffer.location_from_offset(edit_buf, prompt_start, offsets.first),
-    last = terminal_buffer.location_from_offset(edit_buf, prompt_start, offsets.last),
-  })
-end
-
----Map terminal normal/visual keys that open an editor before replaying the key.
----@param buf integer Terminal buffer where keymaps are installed.
----@param group table Buffer-local keymap group receiving the mappings.
----@param open function Callback that opens the editor for `buf`.
----@param opts? table Reserved for future mapping settings.
----@return table?
-function M.apply_terminal_open_then_keymaps(buf, group, open, opts)
-  opts = opts or {}
-  for mode, keys in pairs(config.options.editor.popup.open_then_keys or {}) do
-    for _, key in ipairs(keys) do
-      local map_mode = mode
-      local map_key = key
-      local map = function()
-        -- Outside the editable command, keep the terminal's normal key behavior.
-        -- TODO: make this optional, pasting outside is fun too
-        if not editable_zone.contains(buf) then
-          M.feed_key(map_key, map_mode == "n" and "n" or "")
-          return
-        end
-        -- Opening the popup exits visual mode, so capture selection first.
-        local offsets = helpers.is_visual_mode() and terminal_visual_offsets(buf) or nil
-        local edit_buf = open({ target_buf = buf, target_win = vim.fn.bufwinid(buf) })
-        if edit_buf then
-          -- Wait until popup keymaps/window state settle before replaying the key.
-          -- I think this is safe but can add a wait condition for opening the popup if needed.
-          vim.schedule(function()
-            if offsets then
-              -- Restore selection so visual paste replaces the same command text.
-              restore_editor_visual_offsets(edit_buf, offsets)
-              M.feed_key(map_key, "n")
-            else
-              -- `:normal!` preserves Vim's normal paste cursor semantics here.
-              vim.cmd("normal! " .. map_key)
-            end
-          end)
-        end
-      end
-      group:map(map_mode, map_key, map)
-    end
-  end
-  return group
-end
-
-function M.register_terminal_open(name, open, opts)
-  opts = opts or {}
+function M.register_terminal_open(name, open)
   local group = vim.api.nvim_create_augroup(name, { clear = true })
   vim.api.nvim_create_autocmd("TermOpen", {
     group = group,
     callback = function(args)
       if helpers.is_enabled_terminal(args.buf) then
-        local keymap_group = keymaps.group({ buffer = args.buf })
-        M.apply_terminal_open_keymaps(args.buf, keymap_group, open, opts)
-        M.apply_terminal_open_then_keymaps(args.buf, keymap_group, open, opts)
-        if config.options.editor.popup.open_on_focus then
-          open_on_focus.register(args.buf, open, opts.buffers)
-        end
+        local maps = keymaps.group({ buffer = args.buf })
+        maps:map("t", config.options.editor.open, function()
+          open({ target_buf = args.buf, target_win = vim.fn.bufwinid(args.buf) })
+        end)
       end
     end,
   })
 end
 
-function M:setup_terminal_open(name, opts)
-  opts = opts or {}
-  opts.buffers = self.buffers
+function M:setup_terminal_open(name)
   M.register_terminal_open(name, function(ctx)
-    return self.open(ctx)
-  end, opts)
+    return self:open(ctx)
+  end)
 end
 
 return M

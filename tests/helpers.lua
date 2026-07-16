@@ -1,20 +1,5 @@
 -- imported from https://github.com/echasnovski/mini.nvim
 local Helpers = {}
-local test_root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h")
-local shell_fixtures = test_root .. "/fixtures/shell"
-local test_zdotdir = shell_fixtures .. "/zsh"
-local test_bash_env = shell_fixtures .. "/bash/env"
-local test_fish_config = shell_fixtures
-
-local function test_backend_option()
-  if not vim.env.TERMIO_TEST_BACKEND or vim.env.TERMIO_TEST_BACKEND == "" then
-    return "{}"
-  end
-  if vim.env.TERMIO_TEST_BACKEND ~= "auto" and vim.env.TERMIO_TEST_BACKEND ~= "buffer" then
-    error("TERMIO_TEST_BACKEND must be one of: auto, buffer")
-  end
-  return string.format("{ backend = %q }", vim.env.TERMIO_TEST_BACKEND)
-end
 
 -- Add extra expectations
 Helpers.expect = vim.deepcopy(MiniTest.expect)
@@ -223,17 +208,9 @@ Helpers.setup_child = function(child, setup)
   Helpers.reset_test_state(child)
   child.lua(string.format(
     [[
-      require("termio").setup(vim.tbl_deep_extend("force", {
-        debug = true,
-        timeouts = {
-          -- TODO: Inspect why headless tests need a larger render timeout.
-          render_command = { limit_ms = 500, interval_ms = 10 },
-          shell_query = { limit_ms = 500, interval_ms = 10 },
-        },
-      }, %s, %s))
+      require("termio").setup(vim.tbl_deep_extend("force", { debug = true }, %s))
     ]],
-    test_backend_option(),
-    setup or "{ editor = { type = nil } }"
+    setup or "{ editor = { type = false } }"
   ))
 end
 
@@ -252,7 +229,7 @@ Helpers.wait_until = function(child, check, timeout)
     if check() then
       return
     end
-    child.wait(50)
+    child.wait(1)
   end
   error("timed out")
 end
@@ -280,12 +257,6 @@ Helpers.wait_for_mode = function(child, mode, timeout)
     end)()
   ]])
   error(string.format("expected mode %q, got %q: %s", mode, got or "<nil>", vim.inspect(details)))
-end
-
-Helpers.wait_for_shell_integration = function(child, buf, timeout)
-  Helpers.wait_until(child, function()
-    return child.lua_get([[require("termio.api").buffers[...].shell_integration ~= nil]], { buf })
-  end, timeout)
 end
 
 Helpers.wait_for_read_command = function(child, buf, expected, timeout)
@@ -390,33 +361,11 @@ Helpers.open_shell = function(child, prompt, shell)
   prompt = prompt or "$ "
   shell = shell or vim.env.TERMIO_TEST_SHELL or "zsh"
   if shell == "zsh" then
-    child.cmd(
-      string.format(
-        [[terminal env ZDOTDIR=%q TERMIO_REPO_ROOT=%q TERMIO_TEST_PROMPT=%q zsh -d -i]],
-        test_zdotdir,
-        test_root,
-        prompt
-      )
-    )
+    child.cmd(string.format([[terminal env PS1=%q zsh -df]], prompt))
   elseif shell == "bash" then
-    child.cmd(
-      string.format(
-        [[terminal env BASH_ENV=%q TERMIO_REPO_ROOT=%q TERMIO_TEST_PROMPT=%q bash --rcfile %q -i]],
-        test_bash_env,
-        test_root,
-        prompt,
-        test_bash_env
-      )
-    )
+    child.cmd(string.format([[terminal env PS1=%q bash --noprofile --norc -i]], prompt))
   elseif shell == "fish" then
-    child.cmd(
-      string.format(
-        [[terminal env XDG_CONFIG_HOME=%q TERMIO_REPO_ROOT=%q TERMIO_TEST_PROMPT=%q fish -i]],
-        test_fish_config,
-        test_root,
-        prompt
-      )
-    )
+    child.cmd([[terminal fish --no-config -i]])
   else
     error("unsupported test shell: " .. shell)
   end
@@ -430,7 +379,6 @@ Helpers.open_shell = function(child, prompt, shell)
     end
     return false
   end)
-  Helpers.wait_for_shell_integration(child, buf)
   return buf
 end
 

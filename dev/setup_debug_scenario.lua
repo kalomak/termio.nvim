@@ -63,32 +63,14 @@ local function shell_command(args)
 end
 
 local function test_shell_command(shell)
-  local repo_root = vim.fn.fnamemodify(root, ":h")
-  local shell_fixtures = repo_root .. "/fixtures/shell"
   local commands = {
-    zsh = shell_command({
-      env = { "env", "ZDOTDIR=" .. shell_fixtures .. "/zsh", "TERMIO_REPO_ROOT=" .. repo_root },
-      shell = shell,
-      argv = { "-d", "-i" },
-    }),
+    zsh = shell_command({ env = { "env", "PS1=$ " }, shell = shell, argv = { "-d", "-f" } }),
     bash = shell_command({
-      env = {
-        "env",
-        "BASH_ENV=" .. shell_fixtures .. "/bash/env",
-        "TERMIO_REPO_ROOT=" .. repo_root,
-      },
+      env = { "env", "PS1=$ " },
       shell = shell,
-      argv = { "--rcfile", shell_fixtures .. "/bash/env", "-i" },
+      argv = { "--noprofile", "--norc", "-i" },
     }),
-    fish = shell_command({
-      env = {
-        "env",
-        "XDG_CONFIG_HOME=" .. shell_fixtures,
-        "TERMIO_REPO_ROOT=" .. repo_root,
-      },
-      shell = shell,
-      argv = { "-i" },
-    }),
+    fish = shell_command({ env = { "env" }, shell = shell, argv = { "--no-config", "-i" } }),
   }
   return commands[vim.fn.fnamemodify(shell, ":t")]
 end

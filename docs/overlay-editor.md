@@ -1,7 +1,7 @@
 ## Width issues
 
-Places an overlay window on the row where the latest osc133 B marker is
-detected. Uses `buftype=prompt` to include the prompt as non-modifiable text.
+Places an overlay window on the command row found by the terminal probe.
+Uses `buftype=prompt` to include the prompt as non-modifiable text.
 
 Smoothest editing experience since jitter is hidden behind the window.
 

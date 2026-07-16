@@ -12,16 +12,11 @@ local long_lorem = table.concat({
   "excepteur sint occaecat cupidatat non proident sunt in culpa qui officia deserunt mollit anim id est laborum",
 }, " ")
 
-local function write_long_lorem_with_zle()
+local function write_long_lorem()
   local termio = require("termio")
-  local buf = scenario.terminal_buf
-  local ready = vim.wait(1000, function()
-    return pcall(termio.read_command, buf)
-  end, 20)
-  if not ready then
-    error("termio dev: shell integration is not ready")
-  end
-  termio.write_command(long_lorem, buf)
+  termio.read(function()
+    termio.write(long_lorem)
+  end)
 end
 
 scenario.setup({
@@ -44,7 +39,7 @@ scenario.setup({
 
 vim.keymap.set("n", "<leader>g", "<Cmd>TermioReadCommand<CR>")
 vim.keymap.set("n", "<leader>g?", "<Cmd>map<CR>", { desc = "Show keymaps" })
-vim.keymap.set("n", "<leader>w", write_long_lorem_with_zle)
+vim.keymap.set("n", "<leader>w", write_long_lorem)
 vim.keymap.set({ "n", "v", "x" }, "K", "{")
 vim.keymap.set({ "n", "v", "x" }, "J", "}")
 vim.keymap.set("n", "<leader>e", function()
