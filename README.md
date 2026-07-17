@@ -73,7 +73,7 @@ Check if all markers are visible to Neovim:
 <summary>With <a href="https://neovim.io/doc/user/pack.html#vim.pack">vim.pack</a> (Neovim 0.12+)</summary>
 
 ```lua
-vim.pack.add({ "https://github.com/Kallemakela/termio.nvim" })
+vim.pack.add({ "https://github.com/kalomak/termio.nvim" })
 ```
 
 </details>
@@ -83,7 +83,7 @@ vim.pack.add({ "https://github.com/Kallemakela/termio.nvim" })
 
 ```lua
 {
-  "Kallemakela/termio.nvim",
+  "kalomak/termio.nvim",
   opts = {},
 }
 ```
