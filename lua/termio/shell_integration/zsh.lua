@@ -15,7 +15,7 @@ end
 
 ---@param buf integer
 function M.read_state(buf)
-  helpers.send_bytes("\24\18", buf)
+  helpers.send_bytes("\27[27;5;82~", buf)
 end
 
 -- ZLE erases old command text by painting spaces. Redisplay repaints with ESC[K.

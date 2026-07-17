@@ -9,9 +9,6 @@ fi
 
 TERMIO_SHELL_INTEGRATION_LOADED=1
 
-# Termio clears commands with Emacs readline controls like C-e C-u.
-set -o emacs
-
 # Termio writes via bracketed paste; avoid Readline's active-region highlight.
 bind 'set active-region-start-color ""'
 bind 'set active-region-end-color ""'
@@ -24,6 +21,11 @@ termio_shell_read_state() {
   printf '\e]633;E;%s;%s\a' "$READLINE_POINT" "$READLINE_LINE"
 }
 
-bind -x '"\C-x\C-t": termio_shell_clear_completions'
-bind -x '"\C-x\C-r": termio_shell_read_state'
+for termio_keymap in emacs-standard vi-insertion vi-command; do
+  bind -m "$termio_keymap" '"\C-e": end-of-line'
+  bind -m "$termio_keymap" '"\C-u": kill-whole-line'
+  bind -m "$termio_keymap" -x '"\e[27;5;67~": termio_shell_clear_completions'
+  bind -m "$termio_keymap" -x '"\e[27;5;82~": termio_shell_read_state'
+done
+unset termio_keymap
 printf '\e]633;I;bash\a'

@@ -16,11 +16,12 @@ It is easy to add support for other shells as well if needed.
 
 ## Setup
 
-### Shell
+### Shell integration
+
+Shell integration is required for the plugin to work properly. These are short scripts that add shell commands that termio calls to e.g. clear completions or read the current command state. These scripts also ensure that the expected mappings are in place and set some options like paste formatting for zsh.
 
 > [!NOTE]
 > Currently not auto-loading shell integration because it seems a bit invasive.
-> The integration scripts set Emacs/default shell key bindings in terminals where they are active.
 
 <details>
 <summary>Zsh</summary>

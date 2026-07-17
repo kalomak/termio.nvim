@@ -392,7 +392,7 @@ Helpers.open_shell = function(child, prompt, shell)
   if shell == "zsh" then
     child.cmd(
       string.format(
-        [[terminal env ZDOTDIR=%q TERMIO_REPO_ROOT=%q TERMIO_TEST_PROMPT=%q zsh -d -i]],
+        [[terminal env EDITOR=emacs VISUAL=emacs ZDOTDIR=%q TERMIO_REPO_ROOT=%q TERMIO_TEST_PROMPT=%q zsh -d -i]],
         test_zdotdir,
         test_root,
         prompt

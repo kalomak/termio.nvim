@@ -6,9 +6,6 @@ fi
 
 TERMIO_SHELL_INTEGRATION_LOADED=1
 
-# Termio clears commands with Emacs readline controls like C-e C-u.
-bindkey -e
-
 # Termio writes via bracketed paste; avoid ZLE's pasted-text highlight.
 zle_highlight+=(paste:none)
 
@@ -36,8 +33,10 @@ zle -N expand-or-complete termio_shell_complete
 zle -N termio-read-state termio_shell_read_state
 zle -N termio-redraw termio_shell_redraw
 for termio_keymap in emacs viins vicmd; do
+  bindkey -M "$termio_keymap" '^E' end-of-line
+  bindkey -M "$termio_keymap" '^U' kill-whole-line
   bindkey -M "$termio_keymap" $'\e[27;5;67~' termio-clear-completions
-  bindkey -M "$termio_keymap" $'\C-x\C-r' termio-read-state
+  bindkey -M "$termio_keymap" $'\e[27;5;82~' termio-read-state
   bindkey -M "$termio_keymap" $'\e[27;5;84~' termio-redraw
 done
 unset termio_keymap

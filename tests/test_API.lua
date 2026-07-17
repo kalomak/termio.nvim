@@ -146,6 +146,33 @@ end
 
 T["clear_command()"] = MiniTest.new_set()
 
+local shell = vim.env.TERMIO_TEST_SHELL or "zsh"
+local keymap_commands = {
+  bash = { default = "set -o emacs", vi = "set -o vi" },
+  fish = { default = "fish_default_key_bindings", vi = "fish_vi_key_bindings" },
+  zsh = { default = "bindkey -e", vi = "bindkey -v" },
+}
+
+local function test_clear_command_in_keymap(keymap)
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.type_keys(keymap_commands[shell][keymap], "<CR>")
+  Helpers.wait_for_read_command(child, buf, "")
+  child.api.nvim_input("echo hello")
+  Helpers.wait_for_read_command(child, buf, "echo hello")
+  child.lua([[require("termio").clear_command(...)]], { buf })
+  Helpers.wait_for_read_command(child, buf, "")
+end
+
+T["clear_command()"]["clears command in default mode"] = function()
+  test_clear_command_in_keymap("default")
+end
+
+T["clear_command()"]["clears command in vi mode"] = function()
+  test_clear_command_in_keymap("vi")
+end
+
 T["clear_command()"]["clears current command"] = function()
   local buf = Helpers.open_shell(child)
   child.api.nvim_input("i")

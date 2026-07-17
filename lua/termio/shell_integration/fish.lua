@@ -10,16 +10,12 @@ end
 
 ---@param buf integer
 function M.clear_completion_suggestions(buf)
-  local channel = vim.b[buf].terminal_job_id or vim.bo[buf].channel
-  if not channel then
-    error("termio: missing terminal channel for fish wake")
-  end
-  vim.api.nvim_chan_send(channel, "\24\20")
+  helpers.send_bytes("\27[27;5;67~", buf)
 end
 
 ---@param buf integer
 function M.read_state(buf)
-  helpers.send_bytes("\24\18", buf)
+  helpers.send_bytes("\27[27;5;82~", buf)
 end
 
 function M.redraw_after_pty_write() end
