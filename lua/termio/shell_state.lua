@@ -4,6 +4,10 @@ local shell_integration = require("termio.shell_integration")
 
 local M = {}
 
+---@class CommandState
+---@field command string
+---@field cursor integer
+
 local function prompt_cursor_is_rendered(buf, cursor)
   if not vim.api.nvim_buf_is_valid(buf) then
     return false
@@ -37,15 +41,23 @@ local function emit_prompt_rendered(buf, cursor)
 end
 
 ---@param sequence string
----@return { command: string, cursor: integer }?
-local function parse_command_state(sequence)
-  local payload = sequence:match("^\27]633;E;(.*)$")
+---@param marker string
+---@return CommandState?
+local function parse_command_state(sequence, marker)
+  local payload = sequence:match("^\27]633;" .. marker .. ";(.*)$")
   if not payload then
     return nil
   end
   payload = payload:gsub("\7$", ""):gsub("\27\\$", "")
   local cursor, command = payload:match("^(%d+);(.*)$")
   return command and { command = command, cursor = tonumber(cursor) } or nil
+end
+
+---@param state { shell_state: CommandState }
+---@param command_state CommandState
+local function update_command_state(state, command_state)
+  state.shell_state.command = command_state.command
+  state.shell_state.cursor = command_state.cursor
 end
 
 ---@param sequence string
@@ -60,11 +72,16 @@ end
 function M.handle_term_request(buffers, args)
   local state = helpers.ensure_buffer_state(buffers, args.buf)
   local sequence = args.data.sequence
-  local command_state = parse_command_state(sequence)
+  local command_state = parse_command_state(sequence, "E")
   if command_state then
-    state.shell_state.command = command_state.command
-    state.shell_state.cursor = command_state.cursor
+    update_command_state(state, command_state)
     state.shell_query_pending = false
+    return true
+  end
+  local completion_state = parse_command_state(sequence, "CL")
+  if completion_state then
+    update_command_state(state, completion_state)
+    state.might_have_completions = true
     return true
   end
   local title = parse_title(sequence)
@@ -75,6 +92,7 @@ function M.handle_term_request(buffers, args)
   if sequence:match("^\27]133;A") then
     state.prompt_start_cursor = args.data.cursor
     state.shell_phase = "prompt"
+    state.might_have_completions = false
     return true
   end
   if sequence:match("^\27]133;B") then

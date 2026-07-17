@@ -110,8 +110,13 @@ end
 function M.clear_completion_suggestions(buf)
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
+  local state = helpers.ensure_buffer_state(M.buffers, target)
+  if not state.might_have_completions then
+    return
+  end
   if can_send_shell_integration_signal(target) then
     shell_integration.clear_completion_suggestions(target)
+    state.might_have_completions = false
   end
 end
 

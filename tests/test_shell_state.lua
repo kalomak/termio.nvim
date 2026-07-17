@@ -113,6 +113,26 @@ T["OSC633 command marker stores shell command state"] = function()
   MiniTest.expect.equality(state.shell_query_pending, false)
 end
 
+T["OSC633 completion marker stores command and completion state"] = function()
+  local state = state_for("\027]633;CL;3;ls foo\007", { 2, 4 })
+
+  MiniTest.expect.equality(state.shell_state, { command = "ls foo", cursor = 3 })
+  MiniTest.expect.equality(state.might_have_completions, true)
+end
+
+T["OSC133 prompt start clears completion state"] = function()
+  local shell_state = require("termio.shell_state")
+  local state = state_for("\027]633;CL;3;ls foo\007")
+  local buf = vim.api.nvim_get_current_buf()
+
+  shell_state.handle_term_request({ [buf] = state }, {
+    buf = buf,
+    data = { sequence = "\027]133;A\007", cursor = { 2, 0 } },
+  })
+
+  MiniTest.expect.equality(state.might_have_completions, false)
+end
+
 T["OSC title stores terminal title"] = function()
   local state = state_for("\027]2;python\007")
 

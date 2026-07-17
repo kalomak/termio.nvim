@@ -1,6 +1,7 @@
 ## Ignore completions in read
 
 - Goal: ignore shell completion UI when reading current command.
+- Zsh emits `OSC 633;CL;<cursor>;<command>` when completion is triggered. Termio tracks that completions might be visible until it clears them or receives `OSC 133;A` for a new prompt.
 - Example: `ls<Tab>` shows matches below command in zsh.
 - In zsh ZLE, the real editable command is [`BUFFER`](https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html#index-BUFFER), and [`PREDISPLAY`](https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html#index-PREDISPLAY) / [`POSTDISPLAY`](https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html#index-POSTDISPLAY) are display text outside the editable buffer.
 - I could not find terminal protocol markers for completion UI sections.

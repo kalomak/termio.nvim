@@ -24,7 +24,15 @@ termio_shell_read_state() {
   printf '\e]633;E;%d;%s\a' "$CURSOR" "$BUFFER"
 }
 
+termio_shell_complete() {
+  printf '\e]633;CL;%d;%s\a' "$CURSOR" "$BUFFER"
+  zle termio-original-expand-or-complete
+}
+
 zle -N termio-clear-completions termio_shell_clear_completions
+# Without alias it is possible to conflict with user's custom widget
+zle -A expand-or-complete termio-original-expand-or-complete
+zle -N expand-or-complete termio_shell_complete
 zle -N termio-read-state termio_shell_read_state
 zle -N termio-redraw termio_shell_redraw
 for termio_keymap in emacs viins vicmd; do

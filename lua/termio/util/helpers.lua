@@ -176,6 +176,8 @@ function M.ensure_buffer_state(buffers, buf)
       shell_kind = nil,
       shell_integration = nil,
       shell_state = { command = "", cursor = nil },
+      -- A completion trigger may produce no visible suggestions.
+      might_have_completions = false,
     }
   return buffers[buf]
 end

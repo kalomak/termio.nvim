@@ -114,6 +114,36 @@ T["write_command()"]["replaces latest prompt segment"] = function()
   Helpers.wait_for_read_command(child, buf, "echo done")
 end
 
+T["clear_completion_suggestions()"] = MiniTest.new_set()
+
+local function clear_completion_suggestions(buf)
+  child.lua([[require("termio.api").clear_completion_suggestions(...)]], { buf })
+end
+
+local function completion_state(buf)
+  return child.lua_get([[require("termio.api").buffers[...].might_have_completions]], { buf })
+end
+
+T["clear_completion_suggestions()"]["only clears tracked completions"] = function()
+  local buf = Helpers.open_shell(child)
+  child.lua([[vim.g.completion_clear_calls = 0]])
+  child.lua(
+    [[require("termio.api").buffers[...].shell_integration.clear_completion_suggestions = function() vim.g.completion_clear_calls = vim.g.completion_clear_calls + 1 end]],
+    { buf }
+  )
+
+  clear_completion_suggestions(buf)
+  MiniTest.expect.equality(child.lua_get([[vim.g.completion_clear_calls]]), 0)
+
+  child.lua([[require("termio.api").buffers[...].might_have_completions = true]], { buf })
+  clear_completion_suggestions(buf)
+  MiniTest.expect.equality(child.lua_get([[vim.g.completion_clear_calls]]), 1)
+  MiniTest.expect.equality(completion_state(buf), false)
+
+  clear_completion_suggestions(buf)
+  MiniTest.expect.equality(child.lua_get([[vim.g.completion_clear_calls]]), 1)
+end
+
 T["clear_command()"] = MiniTest.new_set()
 
 T["clear_command()"]["clears current command"] = function()
