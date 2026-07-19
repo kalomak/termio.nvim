@@ -397,14 +397,14 @@ end
 ---@param buf integer
 function M.handle_text_changed(buf)
   local bufinfo = M.buffers[buf]
-  log.debug("integrated.text_changed", {
+  log.trace("integrated.text_changed", {
     buf = buf,
     sync_block_reason = bufinfo.sync_block_reason,
     has_unsynced_edits = bufinfo.has_unsynced_edits,
     line = vim.api.nvim_get_current_line(),
   })
   if not has_command_start_cursor(buf) then
-    log.debug("integrated.text_changed.skip", {
+    log.trace("integrated.text_changed.skip", {
       buf = buf,
       sync_block_reason = bufinfo.sync_block_reason,
       has_unsynced_edits = bufinfo.has_unsynced_edits,
@@ -413,7 +413,7 @@ function M.handle_text_changed(buf)
   end
   if bufinfo.sync_block_reason == "term_leave" then
     set_sync_block_reason(buf, nil)
-    log.debug("integrated.text_changed.skip", {
+    log.trace("integrated.text_changed.skip", {
       buf = buf,
       sync_block_reason = bufinfo.sync_block_reason,
       has_unsynced_edits = bufinfo.has_unsynced_edits,
@@ -421,7 +421,7 @@ function M.handle_text_changed(buf)
     return
   end
   if bufinfo.sync_block_reason == "write" or bufinfo.has_unsynced_edits then
-    log.debug("integrated.text_changed.skip", {
+    log.trace("integrated.text_changed.skip", {
       buf = buf,
       sync_block_reason = bufinfo.sync_block_reason,
       has_unsynced_edits = bufinfo.has_unsynced_edits,
@@ -752,7 +752,7 @@ M.setup = function()
           log.debug("integrated.term_leave", { buf = args.buf })
           local ok, opened = pcall(M.open, { target_buf = args.buf })
           if not ok then
-            log.debug("integrated.open.failed", { buf = args.buf, error = opened })
+            log.warn("integrated.open.failed", { buf = args.buf, error = opened })
           end
         end,
       })

@@ -14,11 +14,13 @@ Set `editor = nil` to only load the API.
 Currently supports zsh, bash, and fish.
 It is easy to add support for other shells as well if needed.
 
+See `:help termio` for documentation.
+
 ## Setup
 
 ### Shell integration
 
-Shell integration is required for the plugin to work properly. These are short scripts that add shell commands that termio calls to e.g. clear completions or read the current command state. These scripts also ensure that the expected mappings are in place and set some options like paste formatting for zsh.
+Shell integration is strongly recommended, especially when using autosuggestions or completions. These short scripts add shell commands that termio calls to clear completions or read the current command state. They also ensure that the expected mappings are in place and set options such as paste formatting for zsh.
 
 > [!NOTE]
 > Currently not auto-loading shell integration because it seems a bit invasive.
@@ -104,7 +106,7 @@ Defaults live in `lua/termio/config.lua`.
 require("termio").setup({
   -- Vim regexes. Command text starts after the matched prompt.
   prompt_patterns = { [[^>>> ]], [[^\.\.\. ]] },
-  -- Vim regex replacements as { pattern, replacement } pairs.
+  -- Lua pattern replacements as { pattern, replacement } pairs.
   read_replace_patterns = {},
   write_replace_patterns = {},
   editor = {
@@ -119,7 +121,7 @@ require("termio").setup({
     -- Filter function to disable editor. Can be used to disable e.g. when TUI active.
     is_disabled = function(buf)
       -- Example, assuming you track if TUI active in terminal
-      -- See `./docs/tui-detection.md` for tracking alt-screen/TUI state.
+      -- See `./dev/doc/tui-detection.md` for tracking alt-screen/TUI state.
       -- return vim.b[buf].term_tui_active
       return false
     end,
@@ -149,7 +151,8 @@ require("termio").setup({
       },
       -- Open popup automatically when a fresh prompt is detected.
       open_on_prompt = false,
-      -- Open popup when the cursor focuses the editable shell command.
+      -- Experimental: open the popup when the terminal-normal cursor enters
+      -- the prompt or current command.
       open_on_focus = false,
       -- Popup-local action keymaps by mode.
       -- down/up move focus to the terminal while keeping popup open.
@@ -174,10 +177,15 @@ require("termio").setup({
       pass_through_normal_keys_first_line = { "{", "<C-u>", "gg", "H" },
     },
   },
-  -- true: vim.notify debug events. function(event, data): custom logger.
-  debug = false,
+  -- Neovim log threshold. Logs are available through :log termio.
+  log_level = vim.log.levels.OFF,
 })
 ```
+
+`log_level` accepts `vim.log.levels.TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, or `OFF`.
+Messages below the configured threshold are omitted.
+`INFO`, `WARN`, and `ERROR` events are also shown through `vim.notify`; `TRACE` and `DEBUG`
+remain file-only.
 
 ## Editors
 
@@ -235,13 +243,6 @@ User commands target the current terminal buffer.
 :TermioDisable
 :TermioToggle
 ```
-
-## Terms
-
-- Command: editable text after the latest prompt marker.
-- Command row: one terminal display row occupied by a command.
-- Prompt: shell text shown before the command.
-- OSC133: terminal escape sequence used to find where the prompt ends and command starts.
 
 ## Completions
 
@@ -301,24 +302,38 @@ termio.nvim/
 │   ├── termio.bash              bash markers and key hooks
 │   └── termio.fish              fish markers and key hooks
 ├── tests/                       MiniTest tests
-├── dev/                         dev harness
-├── docs/                        notes, setup details, roadmap
+├── dev/                         dev harness and developer docs
+├── doc/                         Vim help
 ├── scripts/minimal_init.lua     test config
 ├── run_filtered_tests.sh        focused test runner
 └── Makefile                     all-test entrypoint
 ```
 
-## How the api works.
+## How the api works
 
-#### `read`
-- reads command text from the terminal buffer after the current prompt marker.
-- prompt markers come from OSC 133 shell integration or configured prompt regexes.
-- if extra rows appear after the prompt, asks the shell hook to clear transient completion UI and rereads the buffer.
+### `read`
 
-#### `write`
-- clear the command by sending C-e C-u to the shell process, then sending the command inside bracketed paste.
-- move the cursor by sending arrow keys to the shell.
-- shell hooks redraw or clear completion UI when available; command transport is always PTY input.
+#### With shell integration
+
+- Request the command directly from the shell line editor, such as ZLE for zsh.
+- Remove rendered completions before reading the command.
+
+#### Terminal buffer fallback
+
+Read the command from the terminal buffer. Detect its start position in this order:
+
+1. OSC 133 B marker.
+2. Configured regex.
+3. TBD: probe for the position without configuration.
+
+The end position is assumed to be end of last non-empty row.
+
+## `write`
+
+- Clear the current command by sending `<C-e><C-u>` through the PTY.
+- Send the new command as bracketed paste.
+- Move the cursor by sending left-arrow keys.
+- Request a shell redraw when supported. Otherwise the shell can leave space-painted cells behind.
 
 ## REPLs
 
@@ -358,10 +373,10 @@ Check that prompt is as expected:
 > [!NOTE]
 > REPLs use prompt regexes when OSC 133 shell markers are not available.
 
-## [Known issues/Planned features/Roadmap/TODO](./docs/todo.md)
+## [Known issues/Planned features/Roadmap/TODO](./dev/doc/todo.md)
 
-## [Contributing](./docs/contributing.md)
+## [Contributing](./dev/doc/contributing.md)
 
-## [Development](./docs/development.md)
+## [Development](./dev/doc/development.md)
 
-## [Related projects](./docs/related-projects.md)
+## [Related projects](./dev/doc/related-projects.md)

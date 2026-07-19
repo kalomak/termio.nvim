@@ -1,0 +1,255 @@
+Editors
+
+*termio* *termio-editors*
+
+Default editor: `integrated`.
+
+OVERLAY EDITOR ~
+
+This editor is a separate window/buffer from the terminal.
+Uses `buftype='prompt'`, includes the shell prompt in the first line, and opens
+in normal mode.
+It is the smoothest editing experience but it requires complexity to handle:
+- changing buffer when in the editor window
+- moving seamlessly in and out of the window when navigating the terminal
+
+INTEGRATED EDITOR ~
+
+This editor integrates to the terminal buffer directly. Pros: no extra window,
+cons: hacky, needs to fight with pty over the buffer state.
+
+------------------------------------------------------------------------------
+TUI detection
+
+*termio-tui-detection*
+
+Development notes and an example for tracking terminal alt-screen state:
+https://github.com/kalomak/termio.nvim/blob/main/dev/doc/tui-detection.md
+
+------------------------------------------------------------------------------
+Frequently asked questions
+
+*termio-faq*
+
+------------------------------------------------------------------------------
+                                                               *Termio.enable()*
+                            `Termio.enable`({opts})
+termio integrations and reload enabled-only editor resources.
+Parameters ~
+{opts} `(optional)` `({ notify?: boolean })`
+
+------------------------------------------------------------------------------
+                                                              *Termio.disable()*
+                               `Termio.disable`()
+termio integrations and unload enabled-only editor resources.
+
+------------------------------------------------------------------------------
+                                                                *Termio.setup()*
+                             `Termio.setup`({opts})
+termio from the plugin entrypoint.
+Parameters ~
+{opts} `(optional)` `(table)`
+
+
+==============================================================================
+------------------------------------------------------------------------------
+                                                  *Termio.update_prompt_range()*
+                      `Termio.update_prompt_range`({buf})
+cached prompt range from configured prompt patterns.
+Parameters ~
+{buf} `(optional)` `(integer)`
+
+------------------------------------------------------------------------------
+                                                         *Termio.prompt_range()*
+                          `Termio.prompt_range`({buf})
+the cached prompt range, or nil when no prompt has been detected yet.
+Parameters ~
+{buf} `(optional)` `(integer)`
+Return ~
+`(integer[])` `(optional)` prompt_start_cursor
+Return ~
+`(integer[])` `(optional)` prompt_end_cursor
+
+------------------------------------------------------------------------------
+                                                 *Termio.command_start_cursor()*
+                      `Termio.command_start_cursor`({buf})
+the cursor where command text starts after the prompt, or nil before prompt detection.
+Parameters ~
+{buf} `(optional)` `(integer)`
+Return ~
+`(integer[])` `(optional)` cursor 1-based row, 0-based column
+
+------------------------------------------------------------------------------
+                                              *Termio.cursor_index_in_command()*
+                 `Termio.cursor_index_in_command`({win}, {buf})
+current cursor byte index inside command text, or nil before prompt detection.
+Parameters ~
+{win} `(integer)`
+{buf} `(optional)` `(integer)`
+Return ~
+`(integer)` `(optional)`
+
+------------------------------------------------------------------------------
+                                                         *Termio.read_command()*
+             `Termio.read_command`({buf}, {timeout_ms}, {backend})
+the current shell command buffer.
+Parameters ~
+{buf} `(optional)` `(integer)`
+{timeout_ms} `(optional)` `(integer)`
+{backend} `(optional)` "`(auto)`"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
+Return ~
+`(string)`
+
+------------------------------------------------------------------------------
+                                                           *Termio.read_state()*
+           `Termio.read_state`({buf}, {win}, {timeout_ms}, {backend})
+the current shell command and cursor state.
+Parameters ~
+{buf} `(optional)` `(integer)`
+{win} `(optional)` `(integer)`
+{timeout_ms} `(optional)` `(integer)`
+{backend} `(optional)` "`(auto)`"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
+Return ~
+`({ command: string, cursor: integer? })`
+
+------------------------------------------------------------------------------
+                                         *Termio.clear_completion_suggestions()*
+                  `Termio.clear_completion_suggestions`({buf})
+shell completion suggestions shown below the prompt.
+Parameters ~
+{buf} `(optional)` `(integer)`
+
+------------------------------------------------------------------------------
+                                                        *Termio.clear_command()*
+                     `Termio.clear_command`({buf}, {opts})
+the current shell command buffer.
+Parameters ~
+{buf} `(optional)` `(integer)`
+{opts} `(optional)` `({ wait_for_render?: boolean })`
+Return ~
+`(boolean)`
+
+------------------------------------------------------------------------------
+                                                        *Termio.write_command()*
+               `Termio.write_command`({command}, {buf}, {cursor})
+shell command buffer directly.
+Parameters ~
+{command} `(string)`
+{buf} `(optional)` `(integer)`
+{cursor} `(optional)` `(integer)`
+
+
+==============================================================================
+------------------------------------------------------------------------------
+                                                               *Termio.defaults*
+                               `Termio.defaults`
+Termio configuration with its default values.
+
+Type ~
+`(table)`
+Default values:
+>lua
+  Termio.defaults = {
+    -- "auto" reads through shell integration, then falls back to terminal text.
+    -- "buffer" always reads terminal text.
+    backend = "auto",
+    -- Vim regexes used to detect prompts in terminal text.
+    prompt_patterns = { [[^>>> ]], [[^\.\.\. ]] },
+    -- Ordered Lua pattern replacements applied after reading a command.
+    read_replace_patterns = {},
+    -- Ordered Lua pattern replacements applied before writing a command.
+    write_replace_patterns = {},
+    timeouts = {
+      -- Polling deadline and interval for terminal rendering.
+      render_command = { limit_ms = 50, interval_ms = 2 },
+      -- Polling deadline and interval for shell integration responses.
+      shell_query = { limit_ms = 50, interval_ms = 2 },
+    },
+    waits = {
+      -- How long the integrated editor ignores redraw-triggered TextChanged after writing.
+      integrated_write_guard_ms = 0,
+    },
+    editor = {
+      -- Bundled editor: "integrated", "centered", or "overlay".
+      type = "integrated",
+      -- Filetype assigned to bundled editor buffers.
+      filetype = "bash",
+      -- Vim regex matched against terminal buffer names before enabling the editor.
+      -- Set to nil to accept every terminal buffer.
+      terminal_name_pattern = [[\v(:| )(/[^ ]*/)?(zsh|bash|fish)( |$)]],
+      -- Terminal-mode key that opens centered and overlay editors.
+      open = "<Esc>",
+      -- Returning true prevents the editor from opening for the buffer.
+      is_disabled = function()
+        return false
+      end,
+      -- Editor action mappings by mode: t=terminal, n=normal.
+      keys = {
+        t = {
+          ["<Esc>"] = "open",
+          ["<CR>"] = "submit",
+          ["<C-u>"] = "clear",
+          ["<C-s>"] = "write",
+          ["<M-t>"] = "toggle",
+        },
+        n = {
+          ["<CR>"] = "submit",
+          ["<C-u>"] = "clear",
+          ["<C-s>"] = "write",
+          ["<Esc>"] = "save_and_close",
+          ["<M-t>"] = "toggle",
+        },
+      },
+      popup = {
+        style = {
+          -- Floating-window border override.
+          border = nil,
+          -- Floating-window style passed to nvim_open_win().
+          window = nil,
+          -- Floating-window 'winhighlight' override.
+          winhighlight = nil,
+        },
+        -- Reserved for opening the overlay when a prompt appears; not implemented.
+        open_on_prompt = false,
+        -- Experimental. For centered and overlay editors, open when the terminal-normal
+        -- cursor crosses from outside into the detected prompt or current command.
+        -- The popup does not reopen while the cursor remains in that area.
+        open_on_focus = false,
+        -- Terminal normal/visual keys that open the popup before replaying the key.
+        open_then_keys = { n = { "p", "P" }, x = { "p", "P" } },
+        -- Additional popup-buffer action mappings by mode.
+        keys = {
+          i = {
+            ["<CR>"] = "submit",
+            ["<C-u>"] = "clear",
+            ["<C-s>"] = "write",
+          },
+          n = {
+            ["q"] = "close",
+            ["j"] = "down",
+            ["k"] = "up",
+          },
+          x = {
+            ["j"] = "down",
+            ["k"] = "up",
+          },
+          o = {
+            ["j"] = "down",
+            ["k"] = "up",
+          },
+        },
+        -- Popup insert-mode keys that write, close, then replay in terminal mode.
+        pass_through_insert_keys = { "<Up>", "<Tab>" },
+        -- Popup normal-mode keys that write, close, then replay in terminal normal mode.
+        pass_through_normal_keys = { "}", "<C-d>", "<C-b>", "G", "L", "/", "?", "n", "N" },
+        -- Normal-mode pass-through keys active only on the popup's first visual line.
+        pass_through_normal_keys_first_line = { "{", "<C-u>", "gg", "H" },
+      },
+    },
+    -- Minimum level recorded by the Termio logger.
+    log_level = vim.log.levels.OFF,
+  }
+
+<
+
+ vim:tw=78:ts=8:noet:ft=help:norl:

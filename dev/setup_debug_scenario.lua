@@ -107,6 +107,7 @@ function M.setup(opts)
   vim.opt.clipboard = "unnamedplus"
   vim.opt.runtimepath:append(vim.fn.fnamemodify(root, ":h"))
   dofile(root .. "/debug_dump_terminal.lua").setup()
+  dofile(root .. "/debug_mark_terminal.lua").setup()
   if opts.setup then
     opts.setup()
   end
@@ -134,6 +135,15 @@ function M.open_terminal()
   M.terminal_win = vim.api.nvim_get_current_win()
   M.terminal_chan = vim.b.terminal_job_id or vim.bo.channel
   debug_tools.attach_terminal(M.terminal_buf, M.terminal_win, M.terminal_chan)
+  vim.keymap.set("n", "<C-a>", function()
+    debug_tools.send_keys("\1")
+  end, { buffer = M.terminal_buf })
+  vim.keymap.set("n", "<C-e>", function()
+    debug_tools.send_keys("\5")
+  end, { buffer = M.terminal_buf })
+  vim.keymap.set("n", "<C-t>", function()
+    debug_tools.send_keys("test")
+  end, { buffer = M.terminal_buf })
   vim.schedule(function()
     vim.defer_fn(function()
       local command = get_command()

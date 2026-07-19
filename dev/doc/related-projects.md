@@ -5,6 +5,7 @@
 - also keeps shell cursor in sync with neovim
 - does not work with multiline/wrapped commands (could be fixed maybe)
 - chansend jitter is visible, otherwise very similar to this project
+- long command edits can end up in a feedback loop
 
 ### [`TheLeoP Fork of editable-term.nvim`](https://github.com/TheLeoP/nvim-config/blob/bae7e8cd7eb6220e92174d7507145a465d562249/lua/personal/editable-term.lua#L1-L278)
 - [discussion](https://github.com/neovim/neovim/issues/23645#issuecomment-3643708670)

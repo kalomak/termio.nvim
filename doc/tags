@@ -1,0 +1,17 @@
+Termio.clear_command()	termio.txt	/*Termio.clear_command()*
+Termio.clear_completion_suggestions()	termio.txt	/*Termio.clear_completion_suggestions()*
+Termio.command_start_cursor()	termio.txt	/*Termio.command_start_cursor()*
+Termio.cursor_index_in_command()	termio.txt	/*Termio.cursor_index_in_command()*
+Termio.defaults	termio.txt	/*Termio.defaults*
+Termio.disable()	termio.txt	/*Termio.disable()*
+Termio.enable()	termio.txt	/*Termio.enable()*
+Termio.prompt_range()	termio.txt	/*Termio.prompt_range()*
+Termio.read_command()	termio.txt	/*Termio.read_command()*
+Termio.read_state()	termio.txt	/*Termio.read_state()*
+Termio.setup()	termio.txt	/*Termio.setup()*
+Termio.update_prompt_range()	termio.txt	/*Termio.update_prompt_range()*
+Termio.write_command()	termio.txt	/*Termio.write_command()*
+termio	termio.txt	/*termio*
+termio-editors	termio.txt	/*termio-editors*
+termio-faq	termio.txt	/*termio-faq*
+termio-tui-detection	termio.txt	/*termio-tui-detection*

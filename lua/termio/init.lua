@@ -1,11 +1,43 @@
 local api = require("termio.api")
 local config = require("termio.config")
 local commands = require("termio.commands")
+local log = require("termio.util.log")
 local shell_state = require("termio.shell_state")
 local state = require("termio.state")
 local active_editor
 
-local M = {
+---@toc_entry Editors
+---@text
+--- *termio* *termio-editors*
+---
+--- Default editor: `integrated`.
+---
+--- OVERLAY EDITOR ~
+---
+--- This editor is a separate window/buffer from the terminal.
+--- Uses `buftype='prompt'`, includes the shell prompt in the first line, and opens
+--- in normal mode.
+--- It is the smoothest editing experience but it requires complexity to handle:
+--- - changing buffer when in the editor window
+--- - moving seamlessly in and out of the window when navigating the terminal
+---
+--- INTEGRATED EDITOR ~
+---
+--- This editor integrates to the terminal buffer directly. Pros: no extra window,
+--- cons: hacky, needs to fight with pty over the buffer state.
+
+---@toc_entry TUI detection
+---@text
+--- *termio-tui-detection*
+---
+--- Development notes and an example for tracking terminal alt-screen state:
+--- https://github.com/kalomak/termio.nvim/blob/main/dev/doc/tui-detection.md
+
+---@toc_entry Frequently asked questions
+---@text
+--- *termio-faq*
+
+local Termio = {
   is_enabled = state.is_enabled,
   read_command = api.read_command,
   update_prompt_range = api.update_prompt_range,
@@ -32,7 +64,7 @@ end
 
 ---Enable termio integrations and reload enabled-only editor resources.
 ---@param opts? { notify?: boolean }
-function M.enable(opts)
+function Termio.enable(opts)
   state.enable(opts)
   if active_editor and active_editor.enable then
     active_editor.enable()
@@ -40,18 +72,18 @@ function M.enable(opts)
 end
 
 ---Disable termio integrations and unload enabled-only editor resources.
-function M.disable()
+function Termio.disable()
   state.disable()
   if active_editor and active_editor.disable then
     active_editor.disable()
   end
 end
 
-function M.toggle()
+function Termio.toggle()
   if state.is_enabled() then
-    M.disable()
+    Termio.disable()
   else
-    M.enable()
+    Termio.enable()
   end
 end
 
@@ -66,20 +98,21 @@ end
 
 ---Initialize termio from the plugin entrypoint.
 ---@param opts? table
-function M.setup(opts)
+function Termio.setup(opts)
   config.setup(opts)
+  log.setup(config.options)
   commands.setup()
   active_editor = load_editor()
   if active_editor then
     active_editor.setup()
   end
-  M.enable({ notify = false })
-  if M.initialized then
-    return M
+  Termio.enable({ notify = false })
+  if Termio.initialized then
+    return Termio
   end
   create_autocmds()
-  M.initialized = true
-  return M
+  Termio.initialized = true
+  return Termio
 end
 
-return M
+return Termio

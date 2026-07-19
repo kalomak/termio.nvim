@@ -25,15 +25,16 @@
     - Can be used for running a single test.
     - Test output of the last test goes to `./tmp/test.out`.
 - Run all tests: `make test`
-- Run one file: `nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run_file('tests/test_dev.lua')" -c qall`
+- Run one file: `nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run_file('tests/test_dev.lua')" -c qa!`
 - Do NOT run multiple test commands at the same time. This causes issues.
 
 ## Dev Harness
-- Headless smoke: `sh ./dev/run.sh --headless --debug --post-setup 'lua assert(_G.YourPluginName.config.debug == true)'`
-- Interactive session: `sh ./dev/run.sh --debug`
-- Debug output goes to `./tmp/dev.out`.
+- Headless smoke: `sh ./dev/run.sh --headless --log-level debug --post-setup 'lua assert(require("termio.config").options.log_level == vim.log.levels.DEBUG); vim.cmd("qa!")'`
+- Interactive session: `sh ./dev/run.sh`
+    - remember to call `:qa!` to finish the session.
+- Debug output is available through `:log termio` and stored at `./tmp/state/nvim/logs/termio.log`.
 - Final terminal state goes to `./tmp/termdump.out`
-- The users debug output goes to the same place. If the user reports something not working, it is a good idea to check if the scenario logs are here.
+- The user's debug output uses the same log path. Check it when investigating reported harness failures.
 
 ## Formatting
 - Run `stylua .`

@@ -2,12 +2,14 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export XDG_STATE_HOME="$ROOT/tmp/state"
+mkdir -p "$XDG_STATE_HOME/nvim/logs"
 WORDS=3
 MULTILINE=
 CONFIG_MODE=debug
 EDITOR_MODE=integrated
 LAYOUT_MODE=single
-DEBUG=
+LOG_LEVEL=debug
 AUTO=
 OPEN_ON_FOCUS=
 IO_BACKEND=
@@ -16,7 +18,7 @@ POST_SETUP=
 DEMO=
 
 usage() {
-	printf '%s\n' "usage: $0 [--headless] [--words N] [--multi] [--debug] [--auto] [--open-on-focus] [--demo] [--post-setup EXPR] [--config debug|own] [--editor TYPE] [--backend auto|buffer] [--layout single|v|h]" >&2
+	printf '%s\n' "usage: $0 [--headless] [--words N] [--multi] [--log-level LEVEL] [--auto] [--open-on-focus] [--demo] [--post-setup EXPR] [--config debug|own] [--editor TYPE] [--backend auto|buffer] [--layout single|v|h]" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -33,9 +35,17 @@ while [ "$#" -gt 0 ]; do
 			MULTILINE=1
 			shift
 			;;
-		-d|--debug)
-			DEBUG=1
-			shift
+		--log-level)
+			[ "$#" -ge 2 ] || {
+				usage
+				exit 1
+			}
+			LOG_LEVEL=$2
+			shift 2
+			;;
+		-h|--help)
+			usage
+			exit 0
 			;;
 		--auto)
 			AUTO=1
@@ -142,6 +152,15 @@ case "$IO_BACKEND" in
 		;;
 esac
 
+case "$LOG_LEVEL" in
+	trace|debug|info|warn|error|off)
+		;;
+	*)
+		printf '%s\n' "log level must be one of: trace, debug, info, warn, error, off" >&2
+		exit 1
+		;;
+esac
+
 if [ "$DEMO" = 1 ] && [ -z "$WORDS" ]; then
 	WORDS=0
 fi
@@ -153,16 +172,16 @@ fi
 
 if [ "$CONFIG_MODE" = debug ]; then
 	if [ "$HEADLESS" = 1 ]; then
-		exec env LOREM_WORDS="$WORDS" MULTILINE="$MULTILINE" TERMIO_DEBUG="$DEBUG" TERMIO_AUTO="$AUTO" TERMIO_OPEN_ON_FOCUS="$OPEN_ON_FOCUS" TERMIO_DEMO="$DEMO" TERMIO_EDITOR="$EDITOR_MODE" TERMIO_BACKEND="$IO_BACKEND" TERMIO_LAYOUT="$LAYOUT_MODE" TERMIO_POST_SETUP="$POST_SETUP" TERMIO_REPO_ROOT="$ROOT" nvim $NVIM_HEADLESS -u NONE --cmd "lua dofile([[$ROOT/dev/headless.lua]])"
+		exec env LOREM_WORDS="$WORDS" MULTILINE="$MULTILINE" TERMIO_LOG_LEVEL="$LOG_LEVEL" TERMIO_AUTO="$AUTO" TERMIO_OPEN_ON_FOCUS="$OPEN_ON_FOCUS" TERMIO_DEMO="$DEMO" TERMIO_EDITOR="$EDITOR_MODE" TERMIO_BACKEND="$IO_BACKEND" TERMIO_LAYOUT="$LAYOUT_MODE" TERMIO_POST_SETUP="$POST_SETUP" TERMIO_REPO_ROOT="$ROOT" nvim $NVIM_HEADLESS -u NONE --cmd "lua dofile([[$ROOT/dev/headless.lua]])"
 	fi
-	exec env LOREM_WORDS="$WORDS" MULTILINE="$MULTILINE" TERMIO_DEBUG="$DEBUG" TERMIO_AUTO="$AUTO" TERMIO_OPEN_ON_FOCUS="$OPEN_ON_FOCUS" TERMIO_DEMO="$DEMO" TERMIO_EDITOR="$EDITOR_MODE" TERMIO_BACKEND="$IO_BACKEND" TERMIO_LAYOUT="$LAYOUT_MODE" TERMIO_REPO_ROOT="$ROOT" nvim $NVIM_HEADLESS -u "$ROOT/dev/interactive.lua"
+	exec env LOREM_WORDS="$WORDS" MULTILINE="$MULTILINE" TERMIO_LOG_LEVEL="$LOG_LEVEL" TERMIO_AUTO="$AUTO" TERMIO_OPEN_ON_FOCUS="$OPEN_ON_FOCUS" TERMIO_DEMO="$DEMO" TERMIO_EDITOR="$EDITOR_MODE" TERMIO_BACKEND="$IO_BACKEND" TERMIO_LAYOUT="$LAYOUT_MODE" TERMIO_REPO_ROOT="$ROOT" nvim $NVIM_HEADLESS -u "$ROOT/dev/interactive.lua"
 fi
 
 if [ "$CONFIG_MODE" = own ]; then
 	if [ "$HEADLESS" = 1 ]; then
-		exec env LOREM_WORDS="$WORDS" MULTILINE="$MULTILINE" TERMIO_DEBUG="$DEBUG" TERMIO_AUTO="$AUTO" TERMIO_OPEN_ON_FOCUS="$OPEN_ON_FOCUS" TERMIO_DEMO="$DEMO" TERMIO_EDITOR="$EDITOR_MODE" TERMIO_BACKEND="$IO_BACKEND" TERMIO_LAYOUT="$LAYOUT_MODE" TERMIO_POST_SETUP="$POST_SETUP" TERMIO_REPO_ROOT="$ROOT" nvim $NVIM_HEADLESS --cmd "lua dofile([[$ROOT/dev/headless.lua]])"
+		exec env LOREM_WORDS="$WORDS" MULTILINE="$MULTILINE" TERMIO_LOG_LEVEL="$LOG_LEVEL" TERMIO_AUTO="$AUTO" TERMIO_OPEN_ON_FOCUS="$OPEN_ON_FOCUS" TERMIO_DEMO="$DEMO" TERMIO_EDITOR="$EDITOR_MODE" TERMIO_BACKEND="$IO_BACKEND" TERMIO_LAYOUT="$LAYOUT_MODE" TERMIO_POST_SETUP="$POST_SETUP" TERMIO_REPO_ROOT="$ROOT" nvim $NVIM_HEADLESS --cmd "lua dofile([[$ROOT/dev/headless.lua]])"
 	fi
-	exec env LOREM_WORDS="$WORDS" MULTILINE="$MULTILINE" TERMIO_DEBUG="$DEBUG" TERMIO_AUTO="$AUTO" TERMIO_OPEN_ON_FOCUS="$OPEN_ON_FOCUS" TERMIO_DEMO="$DEMO" TERMIO_EDITOR="$EDITOR_MODE" TERMIO_BACKEND="$IO_BACKEND" TERMIO_LAYOUT="$LAYOUT_MODE" TERMIO_REPO_ROOT="$ROOT" nvim $NVIM_HEADLESS --cmd "lua dofile([[$ROOT/dev/interactive.lua]])"
+	exec env LOREM_WORDS="$WORDS" MULTILINE="$MULTILINE" TERMIO_LOG_LEVEL="$LOG_LEVEL" TERMIO_AUTO="$AUTO" TERMIO_OPEN_ON_FOCUS="$OPEN_ON_FOCUS" TERMIO_DEMO="$DEMO" TERMIO_EDITOR="$EDITOR_MODE" TERMIO_BACKEND="$IO_BACKEND" TERMIO_LAYOUT="$LAYOUT_MODE" TERMIO_REPO_ROOT="$ROOT" nvim $NVIM_HEADLESS --cmd "lua dofile([[$ROOT/dev/interactive.lua]])"
 fi
 
 printf '%s\n' "config must be one of: debug, own" >&2

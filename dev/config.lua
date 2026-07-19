@@ -3,19 +3,9 @@ local debug_options = dofile(root .. "/dev/debug_options.lua")
 
 local M = {}
 
-local function setup_verbosefile()
-  if vim.env.TERMIO_DEBUG ~= "1" then
-    return
-  end
-  vim.fn.mkdir(root .. "/tmp", "p")
-  vim.fn.writefile({}, root .. "/tmp/dev.out")
-  vim.o.verbosefile = root .. "/tmp/dev.out"
-  vim.o.verbose = 1
-end
-
 function M.setup(opts)
   opts = opts or {}
-  setup_verbosefile()
+  vim.fn.writefile({}, vim.fs.joinpath(vim.fn.stdpath("log"), "termio.log"))
   if opts.before_setup then
     opts.before_setup()
   end

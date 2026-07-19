@@ -1,14 +1,15 @@
-local M = { buffers = {} }
+local Termio = { buffers = {} }
 local config = require("termio.config")
 local helpers = require("termio.util.helpers")
 local terminal_buffer = require("termio.terminal_buffer")
 local shell_integration = require("termio.shell_integration")
 
-shell_integration.use_buffers(M.buffers)
+shell_integration.use_buffers(Termio.buffers)
 
 ---@param buf integer
 ---@param cursor integer
 ---@param command string
+---@private
 local function move_shell_cursor(buf, cursor, command)
   local delta = #command - cursor
   if delta > 0 then
@@ -17,7 +18,7 @@ local function move_shell_cursor(buf, cursor, command)
 end
 
 local function can_send_shell_integration_signal(buf)
-  return helpers.ensure_buffer_state(M.buffers, buf).active_prompt_source ~= "regex"
+  return helpers.ensure_buffer_state(Termio.buffers, buf).active_prompt_source ~= "regex"
 end
 
 ---@param target integer
@@ -25,9 +26,10 @@ end
 ---@param timeout_ms? integer
 ---@param backend "auto"|"buffer"
 ---@return { rows: string[], cursor: integer[]?, cursor_index: integer? }
+---@private
 local function read_raw_state(target, win, timeout_ms, backend)
-  M.update_prompt_range(target)
-  local _, prompt_end_cursor = M.prompt_range(target)
+  Termio.update_prompt_range(target)
+  local _, prompt_end_cursor = Termio.prompt_range(target)
   if not prompt_end_cursor then
     error("termio: missing prompt end cursor")
   end
@@ -38,32 +40,32 @@ local function read_raw_state(target, win, timeout_ms, backend)
     end
   end
   win = win or helpers.visible_window(target)
-  return terminal_buffer.read_state(M.buffers, target, win, prompt_end_cursor)
+  return terminal_buffer.read_state(Termio.buffers, target, win, prompt_end_cursor)
 end
 
 ---Update cached prompt range from configured prompt patterns.
 ---@param buf? integer
-function M.update_prompt_range(buf)
+function Termio.update_prompt_range(buf)
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
-  terminal_buffer.update_prompt_cursors_from_patterns(M.buffers, target)
+  terminal_buffer.update_prompt_cursors_from_patterns(Termio.buffers, target)
 end
 
 ---Return the cached prompt range, or nil when no prompt has been detected yet.
 ---@param buf? integer
 ---@return integer[]? prompt_start_cursor
 ---@return integer[]? prompt_end_cursor
-function M.prompt_range(buf)
+function Termio.prompt_range(buf)
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
-  return terminal_buffer.prompt_range(M.buffers, target)
+  return terminal_buffer.prompt_range(Termio.buffers, target)
 end
 
 ---Return the cursor where command text starts after the prompt, or nil before prompt detection.
 ---@param buf? integer
 ---@return integer[]? cursor 1-based row, 0-based column
-function M.command_start_cursor(buf)
-  local _, prompt_end_cursor = M.prompt_range(buf)
+function Termio.command_start_cursor(buf)
+  local _, prompt_end_cursor = Termio.prompt_range(buf)
   return prompt_end_cursor
 end
 
@@ -71,13 +73,13 @@ end
 ---@param win integer
 ---@param buf? integer
 ---@return integer?
-function M.cursor_index_in_command(win, buf)
+function Termio.cursor_index_in_command(win, buf)
   local target = helpers.current_buf(buf)
-  local _, prompt_end_cursor = M.prompt_range(target)
+  local _, prompt_end_cursor = Termio.prompt_range(target)
   if not prompt_end_cursor then
     return nil
   end
-  return terminal_buffer.read_state(M.buffers, target, win, prompt_end_cursor).cursor_index
+  return terminal_buffer.read_state(Termio.buffers, target, win, prompt_end_cursor).cursor_index
 end
 
 ---Query the current shell command buffer.
@@ -85,8 +87,8 @@ end
 ---@param timeout_ms? integer
 ---@param backend? "auto"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
 ---@return string
-function M.read_command(buf, timeout_ms, backend)
-  return M.read_state(buf, nil, timeout_ms, backend).command
+function Termio.read_command(buf, timeout_ms, backend)
+  return Termio.read_state(buf, nil, timeout_ms, backend).command
 end
 
 ---Query the current shell command and cursor state.
@@ -95,7 +97,7 @@ end
 ---@param timeout_ms? integer
 ---@param backend? "auto"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
 ---@return { command: string, cursor: integer? }
-function M.read_state(buf, win, timeout_ms, backend)
+function Termio.read_state(buf, win, timeout_ms, backend)
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
   backend = backend or config.options.backend
@@ -107,10 +109,10 @@ end
 
 ---Hide shell completion suggestions shown below the prompt.
 ---@param buf? integer
-function M.clear_completion_suggestions(buf)
+function Termio.clear_completion_suggestions(buf)
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
-  local state = helpers.ensure_buffer_state(M.buffers, target)
+  local state = helpers.ensure_buffer_state(Termio.buffers, target)
   if not state.might_have_completions then
     return
   end
@@ -124,7 +126,7 @@ end
 ---@param buf? integer
 ---@param opts? { wait_for_render?: boolean }
 ---@return boolean
-function M.clear_command(buf, opts)
+function Termio.clear_command(buf, opts)
   opts = opts or {}
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
@@ -136,7 +138,7 @@ function M.clear_command(buf, opts)
   if opts.wait_for_render ~= false then
     cleared = terminal_buffer.wait_until_command_is_rendered(
       target,
-      M.command_start_cursor(target),
+      Termio.command_start_cursor(target),
       "",
       true
     )
@@ -145,7 +147,7 @@ function M.clear_command(buf, opts)
     vim.notify("termio: failed to clear command", vim.log.levels.WARN)
     return false
   end
-  local state = helpers.ensure_buffer_state(M.buffers, target)
+  local state = helpers.ensure_buffer_state(Termio.buffers, target)
   state.shell_state.command = ""
   state.shell_state.cursor = 0
   return true
@@ -155,7 +157,7 @@ end
 ---@param command string
 ---@param buf? integer
 ---@param cursor? integer
-function M.write_command(command, buf, cursor)
+function Termio.write_command(command, buf, cursor)
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
   if type(command) ~= "string" then
@@ -163,9 +165,9 @@ function M.write_command(command, buf, cursor)
   end
   local shell_command = helpers.replace_patterns(command, config.options.write_replace_patterns)
   local shell_cursor = cursor and math.max(0, math.min(cursor, #shell_command)) or #shell_command
-  local state = helpers.ensure_buffer_state(M.buffers, target)
+  local state = helpers.ensure_buffer_state(Termio.buffers, target)
   local can_signal_shell = can_send_shell_integration_signal(target)
-  M.clear_command(target, { wait_for_render = false })
+  Termio.clear_command(target, { wait_for_render = false })
   helpers.send_bytes("\27[200~" .. shell_command .. "\27[201~", target)
   move_shell_cursor(target, shell_cursor, shell_command)
   if can_signal_shell then
@@ -175,4 +177,4 @@ function M.write_command(command, buf, cursor)
   state.shell_state.cursor = shell_cursor
 end
 
-return M
+return Termio

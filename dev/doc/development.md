@@ -5,14 +5,14 @@
 Recommended for testing. Uses a minimal config without other plugins etc.
 
 ```sh
-sh ./dev/run.sh --debug --words 300
+sh ./dev/run.sh --log-level debug --words 300
 SHELL=/opt/homebrew/bin/bash
 ```
 
-Debug output: `./tmp/dev.out`.
+Debug output: `stdpath("log")/termio.log`, cleared at startup and available through `:log termio`.
 
 #### Args
-- `--debug`: write Neovim verbose output and termio debug logs to `./tmp/dev.out`.
+- `--log-level trace|debug|info|warn|error|off`: set the termio log threshold (default: `debug`).
 - `--words N`: prefill the terminal with a lorem command of `N` words.
 - `--multi`: split the prefilled command over multiple shell lines.
 - `--headless`: run without UI, then quit.
@@ -28,10 +28,10 @@ Debug output: `./tmp/dev.out`.
 - `<leader>q`: quit.
 - `<leader>c`: copy `:messages`.
 - `<leader>bk`: delete the current buffer.
-- `<leader>l`: open `./tmp/dev.out`.
+- `<leader>l`: open the termio log in the current window.
 - `<leader>o`: open `./tmp/termdump.out`.
 - `<leader>i`: write a snapshot to `./tmp/snapshot.out`.
-- `<leader>s`: copy current termio status and append it to `./tmp/dev.out`.
+- `<leader>s`: copy current termio status and append it to the termio log.
 - `<leader>g`: run `:TermioReadCommand`.
 - `<leader>w`: write a long lorem command through termio.
 - `<leader>e`: show the editable zone.

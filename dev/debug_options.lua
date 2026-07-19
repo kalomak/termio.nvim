@@ -1,8 +1,9 @@
 local M = {}
 
 function M.build()
+  local log_level = (vim.env.TERMIO_LOG_LEVEL or "debug"):upper()
   local options = {
-    debug = vim.env.TERMIO_DEBUG == "1",
+    log_level = assert(vim.log.levels[log_level]),
     editor = {
       type = vim.env.TERMIO_EDITOR or "integrated",
       popup = {

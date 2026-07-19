@@ -1,0 +1,2 @@
+[post-switch]
+copy-deps = "wt step copy-ignored"

@@ -224,7 +224,7 @@ Helpers.setup_child = function(child, setup)
   child.lua(string.format(
     [[
       require("termio").setup(vim.tbl_deep_extend("force", {
-        debug = true,
+        log_level = vim.log.levels.DEBUG,
         timeouts = {
           -- TODO: Inspect why headless tests need a larger render timeout.
           render_command = { limit_ms = 500, interval_ms = 10 },

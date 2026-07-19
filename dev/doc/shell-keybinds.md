@@ -25,4 +25,3 @@
 | `M-.` / `M-_`     | insert last argument of previous command                        |
 | `C-t`             | transpose chars                                                 |
 | `M-t`             | transpose words                                                 |
-

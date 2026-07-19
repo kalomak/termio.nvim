@@ -61,12 +61,12 @@ function M.send_bytes(bytes, buf)
   local target = M.current_buf(buf)
   M.assert_terminal(target)
   if not M.is_terminal_channel_open(target) then
-    log.debug("terminal.send.skip_closed", { buf = target })
+    log.trace("terminal.send.skip_closed", { buf = target })
     return
   end
   local ok, err = pcall(vim.api.nvim_chan_send, assert_terminal_channel(target), bytes)
   if not ok then
-    log.debug("terminal.send.failed", { buf = target, error = err })
+    log.warn("terminal.send.failed", { buf = target, error = err })
   end
 end
 
