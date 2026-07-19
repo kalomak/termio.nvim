@@ -21,6 +21,11 @@ function termio_shell_read_state
   printf '\e]633;E;%d;%s\a' (commandline -C) (commandline)
 end
 
+function termio_shell_complete
+  printf '\e]633;CL;%d;%s\a' (commandline -C) (commandline)
+  commandline -f complete
+end
+
 if functions -q fish_user_key_bindings
   functions -c fish_user_key_bindings termio_original_fish_user_key_bindings
 end
@@ -29,6 +34,7 @@ function termio_shell_bindings
   for termio_keymap in default insert visual
     bind -M $termio_keymap \ce end-of-line
     bind -M $termio_keymap \cu kill-whole-line
+    bind -M $termio_keymap \t termio_shell_complete
     bind -M $termio_keymap \e\[27\;5\;67~ termio_shell_clear_transient_ui
     bind -M $termio_keymap \e\[27\;5\;82~ termio_shell_read_state
   end
