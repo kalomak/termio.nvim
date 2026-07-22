@@ -1,19 +1,33 @@
 local Termio = { buffers = {} }
 local config = require("termio.config")
 local helpers = require("termio.util.helpers")
+local log = require("termio.util.log")
 local terminal_buffer = require("termio.terminal_buffer")
 local shell_integration = require("termio.shell_integration")
 
 shell_integration.use_buffers(Termio.buffers)
 
+---Move the shell cursor, anchoring at command end when its position is unknown.
 ---@param buf integer
+---@param previous_cursor integer?
 ---@param cursor integer
----@param command string
----@private
-local function move_shell_cursor(buf, cursor, command)
-  local delta = #command - cursor
-  if delta > 0 then
-    helpers.send_bytes(("\27[D"):rep(delta), buf)
+---@param command_length integer
+function Termio.move_shell_cursor(buf, previous_cursor, cursor, command_length)
+  if type(cursor) ~= "number" or cursor ~= math.floor(cursor) then
+    error("termio: state cursor must be an integer")
+  end
+  if cursor < 0 or cursor > command_length then
+    error("termio: state cursor is outside command")
+  end
+  if previous_cursor == nil then
+    helpers.send_keys("<C-e>", buf)
+    previous_cursor = command_length
+  end
+  local delta = cursor - previous_cursor
+  if delta < 0 then
+    helpers.send_bytes(("\27[D"):rep(-delta), buf)
+  elseif delta > 0 then
+    helpers.send_bytes(("\27[C"):rep(delta), buf)
   end
 end
 
@@ -169,12 +183,29 @@ function Termio.write_command(command, buf, cursor)
   local can_signal_shell = can_send_shell_integration_signal(target)
   Termio.clear_command(target, { wait_for_render = false })
   helpers.send_bytes("\27[200~" .. shell_command .. "\27[201~", target)
-  move_shell_cursor(target, shell_cursor, shell_command)
+  Termio.move_shell_cursor(target, #shell_command, shell_cursor, #shell_command)
   if can_signal_shell then
     shell_integration.redraw_after_pty_write(target)
   end
   state.shell_state.command = shell_command
   state.shell_state.cursor = shell_cursor
+end
+
+---Sync cached shell state to a new state.
+---@param next_state { command: string, cursor: integer }
+---@param buf? integer
+function Termio.sync(next_state, buf)
+  local target = helpers.current_buf(buf)
+  helpers.assert_terminal(target)
+  local state = helpers.ensure_buffer_state(Termio.buffers, target)
+  local previous = state.shell_state
+  log.debug("api.sync", { buf = target, previous = previous, next = next_state })
+  if previous.command ~= next_state.command then
+    Termio.write_command(next_state.command, target, next_state.cursor)
+  elseif previous.cursor ~= next_state.cursor then
+    Termio.move_shell_cursor(target, previous.cursor, next_state.cursor, #previous.command)
+    state.shell_state.cursor = next_state.cursor
+  end
 end
 
 return Termio

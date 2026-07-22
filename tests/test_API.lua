@@ -114,6 +114,51 @@ T["write_command()"]["replaces latest prompt segment"] = function()
   Helpers.wait_for_read_command(child, buf, "echo done")
 end
 
+T["sync()"] = MiniTest.new_set()
+
+local function setup_sync(initial_state)
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.lua(
+    [[require("termio").write_command(...)]],
+    { initial_state.command, buf, initial_state.cursor }
+  )
+  Helpers.wait_for_read_command(child, buf, initial_state.command)
+  return buf
+end
+
+local function wait_for_shell_cursor(buf, cursor)
+  Helpers.wait_until(child, function()
+    return child.lua_get([[require("termio.api").read_state(...).cursor]], { buf }) == cursor
+  end)
+end
+
+T["sync()"]["moves from cached cursor to target cursor"] = function()
+  local buf = setup_sync({ command = "echo hello", cursor = 7 })
+  wait_for_shell_cursor(buf, 7)
+  child.lua([[require("termio").sync({ command = "echo hello", cursor = 4 }, ...)]], { buf })
+  wait_for_shell_cursor(buf, 4)
+  child.lua([[require("termio").sync({ command = "echo hello", cursor = 6 }, ...)]], { buf })
+  wait_for_shell_cursor(buf, 6)
+  child.lua([[require("termio").sync({ command = "echo hello", cursor = 6 }, ...)]], { buf })
+  wait_for_shell_cursor(buf, 6)
+  child.lua([[require("termio.api").buffers[...].shell_state.cursor = nil]], { buf })
+  child.lua([[require("termio").sync({ command = "echo hello", cursor = 4 }, ...)]], { buf })
+  wait_for_shell_cursor(buf, 4)
+end
+
+T["sync()"]["updates changed command"] = function()
+  local buf = setup_sync({ command = "echo old", cursor = 4 })
+  wait_for_shell_cursor(buf, 4)
+  child.lua([[require("termio").sync({ command = "echo new", cursor = 4 }, ...)]], { buf })
+  Helpers.wait_for_read_command(child, buf, "echo new")
+  wait_for_shell_cursor(buf, 4)
+  child.lua([[require("termio").sync({ command = "echo new", cursor = 4 }, ...)]], { buf })
+  Helpers.wait_for_read_command(child, buf, "echo new")
+  wait_for_shell_cursor(buf, 4)
+end
+
 T["clear_completion_suggestions()"] = MiniTest.new_set()
 
 local function clear_completion_suggestions(buf)

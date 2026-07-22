@@ -1,5 +1,6 @@
 local config = require("termio.config")
 local autoresize = require("termio.editors.autoresize")
+local debounced_sync = require("termio.editors.debounced_sync")
 local editable_zone = require("termio.editable_zone")
 local fixbuf = require("termio.editors.fixbuf")
 local helpers = require("termio.util.helpers")
@@ -299,6 +300,19 @@ function M.register_buffer(opts)
   opts.buffers[opts.edit_buf] = vim.tbl_extend("force", opts.ctx, { edit_win = opts.edit_win })
   opts.buffers[opts.edit_buf].keymaps = M.apply_keymaps(opts.edit_buf, opts.handlers)
   autoresize.register(opts.edit_buf, opts.edit_win, opts.max_height)
+  local function read_state()
+    local start_cursor = M.prompt_start_cursor(opts.edit_buf)
+    return {
+      command = M.command_text(opts.edit_buf, start_cursor),
+      cursor = M.cursor_index(opts.edit_buf, opts.edit_win, start_cursor),
+    }
+  end
+  debounced_sync.register(
+    opts.edit_buf,
+    opts.ctx.target_buf,
+    read_state,
+    config.options.editor.sync_debounce_ms
+  )
   fixbuf.register(opts.edit_buf, opts.edit_win, opts.ctx.target_win)
   if vim.bo[opts.edit_buf].buftype == "prompt" then
     register_cursor_clamp(opts.edit_buf)

@@ -28,6 +28,8 @@ Termio.defaults = {
   editor = {
     -- Bundled editor: "integrated", "centered", or "overlay".
     type = "integrated",
+    -- Delay before editor changes are synchronized to the shell; nil disables synchronization.
+    sync_debounce_ms = 100,
     -- Filetype assigned to bundled editor buffers.
     filetype = "bash",
     -- Vim regex matched against terminal buffer names before enabling the editor.

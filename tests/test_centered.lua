@@ -138,6 +138,19 @@ T["centered editor"]["writes command from prompt buffer"] = function()
   Helpers.wait_for_read_command(child, terminal_buf, "echo centered")
 end
 
+T["centered editor"]["debounces command sync"] = function()
+  child.lua([[require("termio.config").options.editor.sync_debounce_ms = 100]])
+  local terminal_buf = open_centered_editor("echo old")
+  child.api.nvim_set_current_line("$ echo centered")
+  MiniTest.expect.equality(
+    child.lua_get([[require("termio.api").read_state(...).command]], {
+      terminal_buf,
+    }),
+    "echo old"
+  )
+  Helpers.wait_for_read_command(child, terminal_buf, "echo centered")
+end
+
 T["centered editor"]["insert enter submits command"] = function()
   local terminal_buf = open_centered_editor("echo insert")
   child.api.nvim_input("i<CR>")

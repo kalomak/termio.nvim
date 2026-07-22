@@ -305,6 +305,25 @@ T["integrated edit"]["bbcw updates read_command"] = function()
   Helpers.wait_for_read_command(child, buf, "echo goodbye world")
 end
 
+T["integrated edit"]["debounces command sync"] = function()
+  child.lua([[require("termio.config").options.editor.sync_debounce_ms = 100]])
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("echo old")
+  Helpers.wait_for_read_command(child, buf, "echo old")
+  Helpers.open_editable_normal_mode(child, buf)
+  child.api.nvim_set_current_line("$ echo integrated")
+  MiniTest.expect.equality(
+    child.lua_get([[require("termio.api").buffers[...].shell_state.command]], { buf }),
+    "echo old"
+  )
+  Helpers.wait_until(child, function()
+    return child.lua_get([[require("termio.api").buffers[...].shell_state.command]], { buf })
+      == "echo integrated"
+  end)
+end
+
 T["integrated edit"]["bbvec text change keeps editor draft"] = function()
   local buf = Helpers.open_shell(child)
   child.api.nvim_input("i")

@@ -1,5 +1,6 @@
 local config = require("termio.config")
 local api = require("termio.api")
+local debounced_sync = require("termio.editors.debounced_sync")
 local editable_zone = require("termio.editable_zone")
 local helpers = require("termio.util.helpers")
 local keymaps = require("termio.util.keymaps")
@@ -733,6 +734,9 @@ M.setup = function()
       log.debug("integrated.term_open", { buf = args.buf })
       map_config_keymaps(args.buf)
       map_integrated_keymaps(args.buf)
+      debounced_sync.register(args.buf, args.buf, function()
+        return read_editor_state(args.buf, vim.fn.bufwinid(args.buf))
+      end, config.options.editor.sync_debounce_ms)
       local editgroup =
         vim.api.nvim_create_augroup("integrated-term-text-change" .. args.buf, { clear = true })
       vim.api.nvim_create_autocmd("TextChanged", {
