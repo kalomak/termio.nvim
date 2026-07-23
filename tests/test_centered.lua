@@ -138,6 +138,20 @@ T["centered editor"]["writes command from prompt buffer"] = function()
   Helpers.wait_for_read_command(child, terminal_buf, "echo centered")
 end
 
+T["centered editor"]["manual write cancels pending command sync"] = function()
+  child.lua([[require("termio.config").options.editor.command_debounce_ms = 100]])
+  local terminal_buf = open_centered_editor("echo old")
+  child.api.nvim_set_current_line("$ echo centered")
+  child.lua([[require("termio.editors.centered").write()]])
+  child.lua([[require("termio").write_command("echo external", ...)]], { terminal_buf })
+  -- Wait past the debounce deadline before checking that its callback was cancelled.
+  child.wait(150)
+  MiniTest.expect.equality(
+    child.lua_get([[require("termio.api").read_state(...).command]], { terminal_buf }),
+    "echo external"
+  )
+end
+
 T["centered editor"]["debounces command sync"] = function()
   child.lua([[require("termio.config").options.editor.command_debounce_ms = 100]])
   local terminal_buf = open_centered_editor("echo old")

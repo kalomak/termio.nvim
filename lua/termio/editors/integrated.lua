@@ -23,12 +23,6 @@ local function build_context(ctx)
   }
 end
 
----@param buf integer
----@param reason? string
-local function set_sync_block_reason(buf, reason)
-  M.buffers[buf].sync_block_reason = reason
-end
-
 local function has_command_start_cursor(buf)
   return api.command_start_cursor(buf) ~= nil
 end
@@ -46,6 +40,28 @@ local function read_editor_state(buf, win)
     command = terminal_buffer.command_text(buf, api.command_start_cursor(buf)),
     cursor = api.cursor_index_in_command(win, buf),
   }
+end
+
+local function read_debounced_state(buf)
+  if not has_command_start_cursor(buf) then
+    return
+  end
+  local win = vim.fn.bufwinid(buf)
+  if win ~= -1 then
+    return read_editor_state(buf, win)
+  end
+end
+
+local function sync_debounced_command(buf, state)
+  if has_command_start_cursor(buf) then
+    M.write(buf, state, "debounce")
+  end
+end
+
+local function sync_debounced_cursor(buf, state)
+  if has_command_start_cursor(buf) and state.command == api.buffers[buf].shell_state.command then
+    M.write(buf, state, "debounce")
+  end
 end
 
 ---Wait for integrated text to match shell state after query/write markers.
@@ -140,9 +156,11 @@ end
 
 ---@param buf integer
 ---@param target? { command?: string, cursor?: integer }
-function M.write(buf, target)
+---@param source? "explicit_write"|"debounce"|"textchange"
+function M.write(buf, target, source)
   local bufinfo = M.buffers[buf]
   target = target or {}
+  source = source or "explicit_write"
   local command_state = helpers.ensure_buffer_state(api.buffers, buf).shell_state
   if target.command == nil or target.cursor == nil then
     local current = read_editor_state(buf, vim.api.nvim_get_current_win())
@@ -167,15 +185,20 @@ function M.write(buf, target)
     buf = buf,
     has_target = next(target) ~= nil,
     delay = delay,
-    sync_block_reason = bufinfo.sync_block_reason,
+    active_write_source = bufinfo.active_write_source,
     has_unsynced_edits = bufinfo.has_unsynced_edits,
   })
-  -- Terminal redraw after sync can emit TextChanged events into the same buffer.
-  -- Keep a short guard so those redraws are not treated as fresh user edits.
-  set_sync_block_reason(buf, "write")
+  debounced_sync.cancel(buf)
+  bufinfo.write_generation = bufinfo.write_generation + 1
+  local current_write_generation = bufinfo.write_generation
+  bufinfo.active_write_source = source
   vim.defer_fn(function()
-    if M.buffers[buf] and M.buffers[buf].sync_block_reason == "write" then
-      set_sync_block_reason(buf, nil)
+    if
+      M.buffers[buf]
+      and M.buffers[buf].write_generation == current_write_generation
+      and M.buffers[buf].active_write_source == source
+    then
+      M.buffers[buf].active_write_source = nil
     end
     log.debug("integrated.writing.stop")
   end, delay)
@@ -417,7 +440,8 @@ function M.handle_text_changed(buf)
   local bufinfo = M.buffers[buf]
   log.trace("integrated.text_changed", {
     buf = buf,
-    sync_block_reason = bufinfo.sync_block_reason,
+    active_write_source = bufinfo.active_write_source,
+    pending_sync_event = bufinfo.pending_sync_event,
     has_unsynced_edits = bufinfo.has_unsynced_edits,
     line = vim.api.nvim_get_current_line(),
   })
@@ -425,16 +449,16 @@ function M.handle_text_changed(buf)
     log.trace("integrated.text_changed.skip.nostart")
     return
   end
-  if bufinfo.sync_block_reason == "term_leave" then
-    set_sync_block_reason(buf, nil)
+  if bufinfo.pending_sync_event == "term_leave" then
+    bufinfo.pending_sync_event = nil
     log.trace("integrated.text_changed.skip.termleave")
     return
   end
-  if bufinfo.sync_block_reason == "write" or bufinfo.has_unsynced_edits then
+  if bufinfo.active_write_source or bufinfo.has_unsynced_edits then
     log.trace("integrated.text_changed.skip.writing")
     return
   end
-  M.write(buf)
+  M.write(buf, nil, "textchange")
 end
 
 ---Open the integrated terminal editor for the target terminal.
@@ -734,17 +758,16 @@ M.setup = function()
           buffer = args.buf,
           enabled = not helpers.is_editor_disabled(args.buf),
         }),
-        sync_block_reason = "term_leave",
+        pending_sync_event = "term_leave",
+        write_generation = 0,
       }
       log.debug("integrated.term_open", { buf = args.buf })
       map_config_keymaps(args.buf)
       map_integrated_keymaps(args.buf)
-      debounced_sync.register(args.buf, args.buf, function()
-        local win = vim.fn.bufwinid(args.buf)
-        if win ~= -1 then
-          return read_editor_state(args.buf, win)
-        end
-      end)
+      debounced_sync.register(args.buf, read_debounced_state, {
+        command = sync_debounced_command,
+        cursor = sync_debounced_cursor,
+      })
       local editgroup =
         vim.api.nvim_create_augroup("integrated-term-text-change" .. args.buf, { clear = true })
       vim.api.nvim_create_autocmd("TextChanged", {
@@ -761,7 +784,7 @@ M.setup = function()
           debounced_sync.resume(args.buf)
           -- Any TextChanged immediately after leaving terminal mode may come
           -- from the mode switch or shell redraw instead of a deliberate edit.
-          set_sync_block_reason(args.buf, "term_leave")
+          M.buffers[args.buf].pending_sync_event = "term_leave"
           log.debug("integrated.term_leave", { buf = args.buf })
           local ok, opened = pcall(M.open, { target_buf = args.buf })
           if not ok then
@@ -788,7 +811,7 @@ M.setup = function()
         group = editgroup,
         buffer = args.buf,
         callback = function(args)
-          if M.buffers[args.buf].sync_block_reason == "term_leave" then
+          if M.buffers[args.buf].pending_sync_event == "term_leave" then
             return
           end
           refresh_integrated_state(args.buf, vim.api.nvim_win_get_cursor(0))

@@ -589,6 +589,30 @@ T["integrated edit"]["visual delete from wrapped command keeps last word"] = fun
   Helpers.wait_for_editable_command(child, buf, "echo " .. last_word)
 end
 
+T["integrated edit"]["visual delete after submitting wrapped command keeps cursor"] = function()
+  local buf = Helpers.open_shell(child)
+  local last_word = "omega"
+  local command = Helpers.lorem_command(1318) .. " " .. last_word
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input(command)
+  Helpers.wait_for_read_command(child, buf, command)
+  child.api.nvim_input("<CR>")
+  Helpers.wait_for_read_command(child, buf, "")
+  child.api.nvim_input(command)
+  Helpers.wait_for_read_command(child, buf, command)
+  Helpers.open_editable_normal_mode(child, buf)
+  child.api.nvim_input("bbev[[EEbhd")
+  Helpers.wait_for_editable_command(child, buf, "echo " .. last_word)
+  Helpers.wait_until(child, function()
+    return child.lua_get([[require("termio.api").buffers[...].shell_state.command]], { buf })
+      == "echo " .. last_word
+  end)
+  Helpers.wait_until(child, function()
+    return get_cursor_index_in_command(buf) == 4
+  end)
+end
+
 T["integrated edit"]["visual change from wrapped command keeps last word"] = function()
   local buf = Helpers.open_shell(child)
   local last_word = "omega"

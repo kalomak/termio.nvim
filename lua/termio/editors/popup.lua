@@ -114,6 +114,7 @@ function M.write_command(ctx, edit_buf, edit_win, cursor)
     target_cursor = M.cursor_index(edit_buf, edit_win, start_cursor)
   end
   target_cursor = target_cursor or #command
+  debounced_sync.cancel(edit_buf)
   api().sync({ command = command, cursor = target_cursor }, ctx.target_buf)
   if target_cursor and vim.api.nvim_win_is_valid(ctx.target_win) then
     vim.api.nvim_win_set_cursor(
@@ -181,6 +182,7 @@ end
 
 function M.submit(buffers, edit_buf, ctx, edit_win)
   local command = M.command_text(edit_buf, M.prompt_start_cursor(edit_buf))
+  debounced_sync.cancel(edit_buf)
   api().sync({ command = command, cursor = #command }, ctx.target_buf)
   helpers.send_keys("<CR>", ctx.target_buf)
   M.close(buffers, edit_buf, ctx, edit_win)
@@ -299,14 +301,31 @@ function M.register_buffer(opts)
   opts.buffers[opts.edit_buf] = vim.tbl_extend("force", opts.ctx, { edit_win = opts.edit_win })
   opts.buffers[opts.edit_buf].keymaps = M.apply_keymaps(opts.edit_buf, opts.handlers)
   autoresize.register(opts.edit_buf, opts.edit_win, opts.max_height)
-  local function read_state()
-    local start_cursor = M.prompt_start_cursor(opts.edit_buf)
+  local function read_state(edit_buf)
+    local start_cursor = M.prompt_start_cursor(edit_buf)
     return {
-      command = M.command_text(opts.edit_buf, start_cursor),
-      cursor = M.cursor_index(opts.edit_buf, opts.edit_win, start_cursor),
+      command = M.command_text(edit_buf, start_cursor),
+      cursor = M.cursor_index(edit_buf, opts.edit_win, start_cursor),
     }
   end
-  debounced_sync.register(opts.edit_buf, opts.ctx.target_buf, read_state)
+  local function sync_command(_, state)
+    if api().command_start_cursor(opts.ctx.target_buf) then
+      api().sync(state, opts.ctx.target_buf)
+    end
+  end
+  local function sync_cursor(_, state)
+    local target = api().buffers[opts.ctx.target_buf]
+    if
+      api().command_start_cursor(opts.ctx.target_buf)
+      and state.command == target.shell_state.command
+    then
+      api().sync(state, opts.ctx.target_buf)
+    end
+  end
+  debounced_sync.register(opts.edit_buf, read_state, {
+    command = sync_command,
+    cursor = sync_cursor,
+  })
   fixbuf.register(opts.edit_buf, opts.edit_win, opts.ctx.target_win)
   if vim.bo[opts.edit_buf].buftype == "prompt" then
     register_cursor_clamp(opts.edit_buf)
