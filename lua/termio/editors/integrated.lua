@@ -345,11 +345,20 @@ local function move_to_command_end(buf)
   keep_cursor_at_command_offset(buf, math.max(command_end_offset(buf) - 1, 0))
 end
 
+---@param offset integer
+local function wait_for_shell_cursor(offset)
+  local wait_ms = config.options.editor.integrated.change_sync_wait_ms
+  if wait_ms ~= nil then
+    vim.wait(wait_ms)
+  end
+end
+
 ---Sync the deleted draft to the shell and continue in terminal insert mode.
 ---@param buf integer
 ---@param offset integer command offset where insert mode should continue
 local function enter_insert_at_command_offset(buf, offset)
   M.write(buf, { cursor = offset })
+  wait_for_shell_cursor(offset)
   vim.cmd.startinsert()
 end
 

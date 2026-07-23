@@ -141,6 +141,11 @@ require("termio").setup({
         ["<M-t>"] = "toggle", -- This toggles the plugin off and on
       },
     },
+    integrated = {
+      -- Delay after synchronizing a change operator before entering terminal mode.
+      -- This lets the shell cursor catch up to avoid cursor jitter; nil disables the wait.
+      change_sync_wait_ms = 50,
+    },
     popup = {
       -- Popup window styling. nil keeps editor defaults or the active theme.
       style = {

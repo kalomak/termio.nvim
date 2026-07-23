@@ -59,6 +59,11 @@ Termio.defaults = {
         ["<M-t>"] = "toggle",
       },
     },
+    integrated = {
+      -- Delay after synchronizing a change operator before entering terminal mode.
+      -- This lets the shell cursor catch up to avoid cursor jitter; nil disables the wait.
+      change_sync_wait_ms = 50,
+    },
     popup = {
       style = {
         -- Floating-window border override.
