@@ -6,13 +6,13 @@ deps:
 	@[ -d deps/mini.test ] || git clone --depth 1 https://github.com/nvim-mini/mini.test deps/mini.test
 
 test: deps
-	TERMIO_TEST_BACKEND="$(BACKEND)" nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()" -c qall
+	XDG_STATE_HOME="$(CURDIR)/tmp/test-state" TERMIO_TEST_BACKEND="$(BACKEND)" nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()" -c qall
 
 test-bash: deps
-	TERMIO_TEST_BACKEND="$(BACKEND)" TERMIO_TEST_SHELL=bash nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()" -c qall
+	XDG_STATE_HOME="$(CURDIR)/tmp/test-state" TERMIO_TEST_BACKEND="$(BACKEND)" TERMIO_TEST_SHELL=bash nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()" -c qall
 
 test-fish: deps
-	TERMIO_TEST_BACKEND="$(BACKEND)" TERMIO_TEST_SHELL=fish nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()" -c qall
+	XDG_STATE_HOME="$(CURDIR)/tmp/test-state" TERMIO_TEST_BACKEND="$(BACKEND)" TERMIO_TEST_SHELL=fish nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()" -c qall
 
 doc-deps:
 	@mkdir -p deps

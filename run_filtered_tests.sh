@@ -33,7 +33,7 @@ esac
 file=${1:?$usage}
 match=${2:?$usage}
 
-TERMIO_TEST_BACKEND="$backend" MINITEST_FILE="$file" MINITEST_MATCH="$match" nvim --headless --noplugin -u "./scripts/minimal_init.lua" -c "lua
+XDG_STATE_HOME="$PWD/tmp/test-state" TERMIO_TEST_BACKEND="$backend" MINITEST_FILE="$file" MINITEST_MATCH="$match" nvim --headless --noplugin -u "./scripts/minimal_init.lua" -c "lua
 local file = vim.fn.fnamemodify(vim.env.MINITEST_FILE, ':.')
 local match = vim.env.MINITEST_MATCH
 local cases = MiniTest.collect({
