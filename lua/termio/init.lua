@@ -44,7 +44,6 @@ local Termio = {
   prompt_range = api.prompt_range,
   clear_command = api.clear_command,
   write_command = api.write_command,
-  move_shell_cursor = api.move_shell_cursor,
   sync = api.sync,
   command_start_cursor = api.command_start_cursor,
   cursor_index_in_command = api.cursor_index_in_command,

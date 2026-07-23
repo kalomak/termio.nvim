@@ -139,7 +139,7 @@ T["centered editor"]["writes command from prompt buffer"] = function()
 end
 
 T["centered editor"]["debounces command sync"] = function()
-  child.lua([[require("termio.config").options.editor.sync_debounce_ms = 100]])
+  child.lua([[require("termio.config").options.editor.command_debounce_ms = 100]])
   local terminal_buf = open_centered_editor("echo old")
   child.api.nvim_set_current_line("$ echo centered")
   MiniTest.expect.equality(

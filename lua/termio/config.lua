@@ -28,8 +28,10 @@ Termio.defaults = {
   editor = {
     -- Bundled editor: "integrated", "centered", or "overlay".
     type = "integrated",
-    -- Delay before editor changes are synchronized to the shell; nil disables synchronization.
-    sync_debounce_ms = 100,
+    -- Delay before command changes are synchronized to the shell; nil disables synchronization.
+    command_debounce_ms = 100,
+    -- Delay before cursor changes are synchronized to the shell; nil disables synchronization.
+    cursor_debounce_ms = 20,
     -- Filetype assigned to bundled editor buffers.
     filetype = "bash",
     -- Vim regex matched against terminal buffer names before enabling the editor.
@@ -47,7 +49,6 @@ Termio.defaults = {
         ["<Esc>"] = "open",
         ["<CR>"] = "submit",
         ["<C-u>"] = "clear",
-        ["<C-s>"] = "write",
         ["<M-t>"] = "toggle",
       },
       n = {

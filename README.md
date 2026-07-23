@@ -131,7 +131,6 @@ require("termio").setup({
         ["<Esc>"] = "open",
         ["<CR>"] = "submit",
         ["<C-u>"] = "clear",
-        ["<C-s>"] = "write",
         ["<M-t>"] = "toggle", -- This toggles the plugin off and on
       },
       n = {

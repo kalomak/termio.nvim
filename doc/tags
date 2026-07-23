@@ -9,6 +9,7 @@ Termio.prompt_range()	termio.txt	/*Termio.prompt_range()*
 Termio.read_command()	termio.txt	/*Termio.read_command()*
 Termio.read_state()	termio.txt	/*Termio.read_state()*
 Termio.setup()	termio.txt	/*Termio.setup()*
+Termio.sync()	termio.txt	/*Termio.sync()*
 Termio.update_prompt_range()	termio.txt	/*Termio.update_prompt_range()*
 Termio.write_command()	termio.txt	/*Termio.write_command()*
 termio	termio.txt	/*termio*

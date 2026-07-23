@@ -3,6 +3,12 @@ local config = require("termio.config")
 local log = require("termio.util.log")
 local state = require("termio.state")
 
+---@param value any
+---@return boolean
+function M.is_integer(value)
+  return type(value) == "number" and value == math.floor(value)
+end
+
 ---@param keys string
 ---@return string
 function M.term_codes(keys)
@@ -66,6 +72,13 @@ function M.send_bytes(bytes, buf)
   end
   local ok, err = pcall(vim.api.nvim_chan_send, assert_terminal_channel(target), bytes)
   if not ok then
+    -- The terminal can exit between the open-channel check above and this send.
+    -- Channel metadata can remain stale after nvim_chan_send reports a closed
+    -- stream, so check both.
+    if tostring(err):find("closed stream", 1, true) or not M.is_terminal_channel_open(target) then
+      log.trace("terminal.send.closed", { buf = target })
+      return
+    end
     log.warn("terminal.send.failed", { buf = target, error = err })
   end
 end
@@ -167,11 +180,13 @@ function M.ensure_buffer_state(buffers, buf)
   buffers[buf] = buffers[buf]
     or {
       prompt_start_cursor = nil,
+      -- TODO: rename to command_start
       prompt_end_cursor = nil,
       active_prompt_cursor = nil,
       active_prompt_source = nil,
       active_prompt_process = nil,
       terminal_title = nil,
+      -- TODO: generalize phase concept to non-shell use
       shell_phase = nil,
       shell_kind = nil,
       shell_integration = nil,

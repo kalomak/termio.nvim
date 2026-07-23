@@ -108,11 +108,13 @@ end
 
 function M.write_command(ctx, edit_buf, edit_win, cursor)
   local start_cursor = M.prompt_start_cursor(edit_buf)
+  local command = M.command_text(edit_buf, start_cursor)
   local target_cursor = cursor
   if target_cursor == nil and vim.api.nvim_win_is_valid(edit_win) then
     target_cursor = M.cursor_index(edit_buf, edit_win, start_cursor)
   end
-  api().write_command(M.command_text(edit_buf, start_cursor), ctx.target_buf, target_cursor)
+  target_cursor = target_cursor or #command
+  api().sync({ command = command, cursor = target_cursor }, ctx.target_buf)
   if target_cursor and vim.api.nvim_win_is_valid(ctx.target_win) then
     vim.api.nvim_win_set_cursor(
       ctx.target_win,
@@ -178,11 +180,8 @@ function M.close(buffers, edit_buf, ctx, edit_win)
 end
 
 function M.submit(buffers, edit_buf, ctx, edit_win)
-  api().write_command(
-    M.command_text(edit_buf, M.prompt_start_cursor(edit_buf)),
-    ctx.target_buf,
-    nil
-  )
+  local command = M.command_text(edit_buf, M.prompt_start_cursor(edit_buf))
+  api().sync({ command = command, cursor = #command }, ctx.target_buf)
   helpers.send_keys("<CR>", ctx.target_buf)
   M.close(buffers, edit_buf, ctx, edit_win)
   vim.schedule(function()
@@ -307,12 +306,7 @@ function M.register_buffer(opts)
       cursor = M.cursor_index(opts.edit_buf, opts.edit_win, start_cursor),
     }
   end
-  debounced_sync.register(
-    opts.edit_buf,
-    opts.ctx.target_buf,
-    read_state,
-    config.options.editor.sync_debounce_ms
-  )
+  debounced_sync.register(opts.edit_buf, opts.ctx.target_buf, read_state)
   fixbuf.register(opts.edit_buf, opts.edit_win, opts.ctx.target_win)
   if vim.bo[opts.edit_buf].buftype == "prompt" then
     register_cursor_clamp(opts.edit_buf)

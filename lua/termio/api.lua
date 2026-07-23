@@ -9,11 +9,12 @@ shell_integration.use_buffers(Termio.buffers)
 
 ---Move the shell cursor, anchoring at command end when its position is unknown.
 ---@param buf integer
----@param previous_cursor integer?
+---@param previous_cursor integer? nil means unknown; movement anchors at command end
 ---@param cursor integer
 ---@param command_length integer
-function Termio.move_shell_cursor(buf, previous_cursor, cursor, command_length)
-  if type(cursor) ~= "number" or cursor ~= math.floor(cursor) then
+---@private
+local function move_shell_cursor(buf, previous_cursor, cursor, command_length)
+  if not helpers.is_integer(cursor) then
     error("termio: state cursor must be an integer")
   end
   if cursor < 0 or cursor > command_length then
@@ -100,9 +101,10 @@ end
 ---@param buf? integer
 ---@param timeout_ms? integer
 ---@param backend? "auto"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
+---@param cache? boolean Update the cached shell state. Defaults to true.
 ---@return string
-function Termio.read_command(buf, timeout_ms, backend)
-  return Termio.read_state(buf, nil, timeout_ms, backend).command
+function Termio.read_command(buf, timeout_ms, backend, cache)
+  return Termio.read_state(buf, nil, timeout_ms, backend, cache).command
 end
 
 ---Query the current shell command and cursor state.
@@ -110,15 +112,22 @@ end
 ---@param win? integer
 ---@param timeout_ms? integer
 ---@param backend? "auto"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
+---@param cache? boolean Update the cached shell state. Defaults to true.
 ---@return { command: string, cursor: integer? }
-function Termio.read_state(buf, win, timeout_ms, backend)
+function Termio.read_state(buf, win, timeout_ms, backend, cache)
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
   backend = backend or config.options.backend
   if backend ~= "auto" and backend ~= "buffer" then
     error("termio: backend must be 'auto' or 'buffer'")
   end
-  return helpers.normalize_state(read_raw_state(target, win, timeout_ms, backend))
+  local command_state = helpers.normalize_state(read_raw_state(target, win, timeout_ms, backend))
+  if cache ~= false then
+    local cached_state = helpers.ensure_buffer_state(Termio.buffers, target).shell_state
+    cached_state.command = command_state.command
+    cached_state.cursor = command_state.cursor
+  end
+  return command_state
 end
 
 ---Hide shell completion suggestions shown below the prompt.
@@ -183,7 +192,7 @@ function Termio.write_command(command, buf, cursor)
   local can_signal_shell = can_send_shell_integration_signal(target)
   Termio.clear_command(target, { wait_for_render = false })
   helpers.send_bytes("\27[200~" .. shell_command .. "\27[201~", target)
-  Termio.move_shell_cursor(target, #shell_command, shell_cursor, #shell_command)
+  move_shell_cursor(target, #shell_command, shell_cursor, #shell_command)
   if can_signal_shell then
     shell_integration.redraw_after_pty_write(target)
   end
@@ -197,13 +206,16 @@ end
 function Termio.sync(next_state, buf)
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
+  if not helpers.is_integer(next_state.cursor) then
+    error("termio: state cursor must be an integer")
+  end
   local state = helpers.ensure_buffer_state(Termio.buffers, target)
   local previous = state.shell_state
   log.debug("api.sync", { buf = target, previous = previous, next = next_state })
   if previous.command ~= next_state.command then
     Termio.write_command(next_state.command, target, next_state.cursor)
   elseif previous.cursor ~= next_state.cursor then
-    Termio.move_shell_cursor(target, previous.cursor, next_state.cursor, #previous.command)
+    move_shell_cursor(target, previous.cursor, next_state.cursor, #previous.command)
     state.shell_state.cursor = next_state.cursor
   end
 end

@@ -31,6 +31,9 @@
 - shell cursor can be synced without any interruption, even for 'integrated'
 - debounce would make the most sense for syncing more often
 
+### hide cursor jitter from all events
+- always sync cursor before changing back to terminal mode
+
 ## symmetric on last line movements
 #enhancement #popup
 - currently upward movements like k in popup window go to target window

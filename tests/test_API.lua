@@ -58,6 +58,30 @@ T["read_command()"]["applies configured read replace patterns"] = function()
   Helpers.wait_for_read_command(child, buf, "echo read")
 end
 
+T["read_state()"] = MiniTest.new_set()
+
+T["read_state()"]["reads state and updates cache"] = function()
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("echo hello")
+  Helpers.wait_for_read_command(child, buf, "echo hello")
+  child.lua(
+    [[require("termio.api").buffers[...].shell_state = { command = "stale", cursor = 0 }]],
+    { buf }
+  )
+  local state = child.lua_get(
+    [[require("termio.api").read_state(..., vim.api.nvim_get_current_win(), nil, "buffer")]],
+    { buf }
+  )
+  local expected = { command = "echo hello", cursor = 10 }
+  MiniTest.expect.equality(state, expected)
+  MiniTest.expect.equality(
+    child.lua_get([[require("termio.api").buffers[...].shell_state]], { buf }),
+    expected
+  )
+end
+
 T["read_command()"]["detects default Python REPL prompt regex"] = function()
   local buf = open_python_repl()
   child.api.nvim_input("i")

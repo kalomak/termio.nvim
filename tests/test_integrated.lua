@@ -61,7 +61,7 @@ local function get_cursor_index_in_command(buf)
 end
 
 local function read_integrated_command(buf)
-  return child.lua_get([[require("termio").read_command(..., nil, "buffer")]], { buf })
+  return child.lua_get([[require("termio").read_command(..., nil, "buffer", false)]], { buf })
 end
 
 local function open_python_repl(opts)
@@ -306,7 +306,7 @@ T["integrated edit"]["bbcw updates read_command"] = function()
 end
 
 T["integrated edit"]["debounces command sync"] = function()
-  child.lua([[require("termio.config").options.editor.sync_debounce_ms = 100]])
+  child.lua([[require("termio.config").options.editor.command_debounce_ms = 100]])
   local buf = Helpers.open_shell(child)
   child.api.nvim_input("i")
   Helpers.wait_for_mode(child, "t")
