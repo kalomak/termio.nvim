@@ -59,6 +59,12 @@ function M.register(edit_buf, read_state, callbacks)
       callbacks.cursor
     )
   end
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    buffer = edit_buf,
+    callback = function()
+      states[edit_buf] = nil
+    end,
+  })
 end
 
 ---Suspend synchronization and cancel pending callbacks.

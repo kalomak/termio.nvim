@@ -25,16 +25,9 @@
 - C-e achieves this but moves cursor (unless hidden?)
 
 ## Advanced sync
-### sync more often
-#enhancement
-- can get rid of some jitter
-- shell cursor can be synced without any interruption, even for 'integrated'
-- debounce would make the most sense for syncing more often
-
-### hide cursor jitter from all events
-- always sync cursor before changing back to terminal mode
-
-### does debounce unsubscribe from debounce when focus somewhere else?
+### sync with more efficient commands than clear + rewrite if possible
+#enhancement #sync
+- can start simple, like x uses the delete char key
 
 ## symmetric on last line movements
 #enhancement #popup
