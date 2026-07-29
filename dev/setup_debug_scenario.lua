@@ -107,7 +107,9 @@ function M.setup(opts)
   vim.opt.clipboard = "unnamedplus"
   vim.opt.runtimepath:append(vim.fn.fnamemodify(root, ":h"))
   dofile(root .. "/debug_dump_terminal.lua").setup()
-  dofile(root .. "/debug_mark_terminal.lua").setup()
+  if vim.env.TERMIO_OSC_COLORS ~= "0" then
+    dofile(root .. "/debug_mark_terminal.lua").setup()
+  end
   if opts.setup then
     opts.setup()
   end
