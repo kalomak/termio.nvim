@@ -66,4 +66,13 @@ function M.contains(buf, cursor)
   return row ~= zone.end_row or col <= zone.end_col
 end
 
+---Check if both ends of a range are inside the editable command zone.
+---@param buf integer
+---@param start_cursor integer[] 1-based row, 0-based column
+---@param end_cursor integer[] 1-based row, 0-based column
+---@return boolean
+function M.contains_range(buf, start_cursor, end_cursor)
+  return M.contains(buf, start_cursor) and M.contains(buf, end_cursor)
+end
+
 return M

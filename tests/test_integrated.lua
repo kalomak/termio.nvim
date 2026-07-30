@@ -762,6 +762,22 @@ T["integrated edit"]["xp keeps paste in editor draft"] = function()
   Helpers.wait_for_editable_command(child, buf, "hello")
 end
 
+T["integrated edit"]["visual p outside command pastes to shell"] = function()
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("echo history<CR>")
+  Helpers.wait_for_shell_output(child, buf, "history")
+  Helpers.open_editable_normal_mode(child, buf)
+  child.fn.setreg('"', "echo pasted")
+  local command_start = child.lua_get([[require("termio.api").command_start_cursor(...)]], { buf })
+  child.api.nvim_win_set_cursor(0, { command_start[1] - 1, 0 })
+  child.api.nvim_set_option_value("modifiable", false, { buf = buf })
+  child.api.nvim_input("vp")
+  Helpers.wait_for_read_command(child, buf, "echo pasted")
+  Helpers.expect.no_match(child.cmd_capture("messages"), "E21")
+end
+
 T["integrated edit"]["dj on wrapped command stays in normal mode"] = function()
   local buf = Helpers.open_shell(child)
   local command = Helpers.lorem_command(520)

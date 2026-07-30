@@ -271,6 +271,19 @@ local function paste_register_into_integrated_buffer(after, register)
   vim.api.nvim_win_set_cursor(0, { row + #lines - 1, col + #lines[#lines] - 1 })
 end
 
+---Paste the selected register using integrated normal-mode semantics.
+---The register comes from an optional prefix and defaults to the unnamed register (`"`).
+---@param buf integer
+---@param after boolean paste after the cursor when true
+local function paste_register_from_normal_mode(buf, after)
+  if not editable_zone.contains(buf) then
+    helpers.send_bytes(vim.fn.getreg(vim.v.register), buf)
+    return
+  end
+  mark_unsynced_edit(buf)
+  paste_register_into_integrated_buffer(after)
+end
+
 local function delete_visual_selection_then(action)
   mark_unsynced_edit(vim.api.nvim_get_current_buf())
   vim.cmd("normal! d")
@@ -581,12 +594,10 @@ local function map_normal_edit_keymaps(buf)
       vim.cmd("normal! x")
     end,
     p = function()
-      mark_unsynced_edit(buf)
-      paste_register_into_integrated_buffer(true)
+      paste_register_from_normal_mode(buf, true)
     end,
     P = function()
-      mark_unsynced_edit(buf)
-      paste_register_into_integrated_buffer(false)
+      paste_register_from_normal_mode(buf, false)
     end,
   }
   for lhs, action in pairs(normal_edits) do
@@ -714,6 +725,17 @@ local function map_visual_paste_keymaps(buf)
   for lhs, after in pairs(visual_pastes) do
     set_termio_keymap(buf, "x", lhs, "integrated.key.visual_" .. lhs, function()
       log_integrated_key("integrated.key.visual_" .. lhs, buf)
+      local anchor = vim.fn.getpos("v")
+      if
+        not editable_zone.contains_range(
+          buf,
+          { anchor[2], anchor[3] - 1 },
+          vim.api.nvim_win_get_cursor(0)
+        )
+      then
+        helpers.send_bytes(vim.fn.getreg(vim.v.register), buf)
+        return
+      end
       paste_register_over_visual_selection(after)
     end)
   end
