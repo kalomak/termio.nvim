@@ -778,6 +778,42 @@ T["integrated edit"]["visual p outside command pastes to shell"] = function()
   Helpers.expect.no_match(child.cmd_capture("messages"), "E21")
 end
 
+T["integrated edit"]["dw outside command preserves terminal history"] = function()
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("echo lorem ipsum<CR>")
+  Helpers.wait_for_shell_output(child, buf, "lorem ipsum")
+  Helpers.open_editable_normal_mode(child, buf)
+  local command_start = child.lua_get([[require("termio.api").command_start_cursor(...)]], { buf })
+  local history_row = command_start[1] - 1
+  local history_line = child.api.nvim_buf_get_lines(buf, history_row - 1, history_row, false)[1]
+  child.api.nvim_win_set_cursor(0, { history_row, 6 })
+  child.api.nvim_input("dw")
+  MiniTest.expect.equality(
+    child.api.nvim_buf_get_lines(buf, history_row - 1, history_row, false)[1],
+    history_line
+  )
+end
+
+T["integrated edit"]["cw outside command preserves terminal history"] = function()
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("echo lorem ipsum<CR>")
+  Helpers.wait_for_shell_output(child, buf, "lorem ipsum")
+  Helpers.open_editable_normal_mode(child, buf)
+  local command_start = child.lua_get([[require("termio.api").command_start_cursor(...)]], { buf })
+  local history_row = command_start[1] - 1
+  local history_line = child.api.nvim_buf_get_lines(buf, history_row - 1, history_row, false)[1]
+  child.api.nvim_win_set_cursor(0, { history_row, 6 })
+  child.api.nvim_input("cw")
+  MiniTest.expect.equality(
+    child.api.nvim_buf_get_lines(buf, history_row - 1, history_row, false)[1],
+    history_line
+  )
+end
+
 T["integrated edit"]["dj on wrapped command stays in normal mode"] = function()
   local buf = Helpers.open_shell(child)
   local command = Helpers.lorem_command(520)

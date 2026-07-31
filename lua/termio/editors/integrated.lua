@@ -402,12 +402,17 @@ end
 ---@param motion_type string
 function M.apply_delete_operator(motion_type)
   local buf = vim.api.nvim_get_current_buf()
-  local offset = command_offset_at_operator_start(buf)
   -- pending_after_delete_operator should handle keeping cursor at correct position
   -- for c{motion}, this happens by going to 't' mode which clamps cursor
   -- for d{motion}, we manually apply keep_cursor_at_command_offset
   local after_delete = pending_after_delete_operator or keep_cursor_at_command_offset
   pending_after_delete_operator = nil
+  local start_cursor = vim.api.nvim_buf_get_mark(buf, "[")
+  local end_cursor = vim.api.nvim_buf_get_mark(buf, "]")
+  if not editable_zone.contains_range(buf, start_cursor, end_cursor) then
+    return
+  end
+  local offset = command_offset_at_operator_start(buf)
   mark_unsynced_edit(buf)
   delete_operator_motion_range(motion_type)
   after_delete(buf, offset)
@@ -589,10 +594,6 @@ end
 -- Apply immediate normal-mode edits that do not need a motion.
 local function map_normal_edit_keymaps(buf)
   local normal_edits = {
-    x = function()
-      mark_unsynced_edit(buf)
-      vim.cmd("normal! x")
-    end,
     p = function()
       paste_register_from_normal_mode(buf, true)
     end,
@@ -687,6 +688,12 @@ local function map_normal_operator_keymaps(buf)
     },
     s = {
       start = start_change_operator,
+      motion = function()
+        return vim.v.count1 .. "l"
+      end,
+    },
+    x = {
+      start = start_delete_operator,
       motion = function()
         return vim.v.count1 .. "l"
       end,
