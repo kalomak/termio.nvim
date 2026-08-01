@@ -6,6 +6,7 @@ Recommended for testing. Uses a minimal config without other plugins etc.
 
 ```sh
 sh ./dev/run.sh --log-level debug --words 300
+sh ./dev/run.sh --command neovide
 SHELL=/opt/homebrew/bin/bash
 ```
 
@@ -16,6 +17,7 @@ Debug output: `stdpath("log")/termio.log`, cleared at startup and available thro
 - `--words N`: prefill the terminal with a lorem command of `N` words.
 - `--multi`: split the prefilled command over multiple shell lines.
 - `--headless`: run without UI, then quit.
+- `--command COMMAND`: use an alternative Neovim frontend (default: `nvim`).
 - `--post-setup CMD`: run a Vim command before a headless run quits.
 - `--config debug|own`: use the repo debug config or your own config.
 - `--editor TYPE`: set the termio editor type.
