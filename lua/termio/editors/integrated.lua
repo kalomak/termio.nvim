@@ -718,10 +718,16 @@ end
 
 local function map_visual_operator_keymaps(buf)
   -- Visual mode already has a selected range, so no extra motion suffix is needed.
-  for _, lhs in ipairs({ "c", "s" }) do
+  local visual_operators = {
+    c = start_change_operator,
+    d = start_delete_operator,
+    s = start_change_operator,
+    x = start_delete_operator,
+  }
+  for lhs, start_operator in pairs(visual_operators) do
     set_termio_keymap(buf, "x", lhs, "integrated.key.visual_" .. lhs, function()
       log_integrated_key("integrated.key.visual_" .. lhs, buf)
-      return start_change_operator()
+      return start_operator()
     end, { expr = true })
   end
 end
