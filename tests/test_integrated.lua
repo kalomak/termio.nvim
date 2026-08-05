@@ -178,6 +178,18 @@ T["integrated repl"]["open keeps cursor at Python command end"] = function()
   MiniTest.expect.equality(get_cursor_index_in_command(buf), 2)
 end
 
+T["integrated repl"]["I inserts at start after unmapped terminal exit"] = function()
+  local buf = open_python_repl()
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("1+1")
+  Helpers.wait_for_read_command(child, buf, "1+1")
+  child.cmd("stopinsert")
+  Helpers.wait_for_mode(child, "nt")
+  child.api.nvim_input("Istart")
+  Helpers.wait_for_read_command(child, buf, "start1+1")
+end
+
 T["integrated edit"]["open stores current shell state"] = function()
   local buf = Helpers.open_shell(child)
   child.api.nvim_input("i")

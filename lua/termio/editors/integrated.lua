@@ -36,10 +36,7 @@ local function ensure_command_start_cursor(buf)
 end
 
 local function read_editor_state(buf, win)
-  return {
-    command = terminal_buffer.command_text(buf, api.command_start_cursor(buf)),
-    cursor = api.cursor_index_in_command(win, buf),
-  }
+  return api.read_state(buf, win, nil, "buffer", false)
 end
 
 local function read_debounced_state(buf)
@@ -482,9 +479,6 @@ end
 ---Open the integrated terminal editor for the target terminal.
 ---@param ctx? table
 ---@return boolean opened
----Open the integrated terminal editor for the target terminal.
----@param ctx? table
----@return boolean opened
 function M.open(ctx)
   ctx = build_context(ctx)
   local buf, win = ctx.target_buf, ctx.target_win
@@ -496,11 +490,17 @@ function M.open(ctx)
     return false
   end
   local buffer_state = helpers.ensure_buffer_state(api.buffers, buf)
-  buffer_state.shell_state = api.read_state(buf, win)
+  local shell_state = api.read_state(buf, win)
+  local cursor = vim.api.nvim_win_get_cursor(win)
+  -- HACK: Entering normal mode moves cursor back by one in neovim, if we read state from the
+  -- buffer, we need to undo this cursor move in shell_state
+  if buffer_state.active_prompt_source ~= "osc133" and editable_zone.contains(buf, cursor) then
+    shell_state.cursor = math.min(shell_state.cursor + 1, #shell_state.command)
+  end
+  buffer_state.shell_state = shell_state
   api.clear_completion_suggestions(buf)
   log.debug("integrated.open", { buf = buf, win = win, shell_state = buffer_state.shell_state })
   wait_until_command_is_rendered(buf, buffer_state.shell_state.command)
-  local cursor = vim.api.nvim_win_get_cursor(win)
   cursor = move_cursor_back_to_editable_zone(buf, cursor, win, #buffer_state.shell_state.command)
   refresh_integrated_state(buf, cursor, win)
   return true
