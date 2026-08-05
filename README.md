@@ -344,7 +344,7 @@ The end position is assumed to be end of last non-empty row.
 `termio.nvim` uses OSC133 markers or configured prompt regexes to detect where
 the prompt ends and the editable command starts. 
 
-### Example: Python REPL
+### Example: Python REPL - Regex prompt
 
 Add these to prompt patterns:
 ```lua
@@ -374,8 +374,18 @@ Check that prompt is as expected:
 '\x01\x1b]133;A\x07\x02>>> \x01\x1b]133;B\x07\x02'
 ```
 
-> [!NOTE]
-> REPLs use prompt regexes when OSC 133 shell markers are not available.
+### Example: Codex - Replace patterns
+
+Interactive programs like codex may render content that should not become part
+of the editable command. `read_replace_patterns` can be used to filter out that
+content:
+
+```lua
+require("termio").setup({
+  prompt_patterns = { [[^[›»] ]] }, -- Needed for codex as it does not provide OSC133
+  read_replace_patterns = { { [[^%s*gpt%-%d+%.%d+.*$]], "" } }, -- Replace patterns after command area with ""
+})
+```
 
 ## [Known issues/Planned features/Roadmap/TODO](./dev/doc/todo.md)
 

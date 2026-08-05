@@ -28,6 +28,7 @@
 ### sync with more efficient commands than clear + rewrite if possible
 #enhancement #sync
 - can start simple, like x uses the delete char key
+- optimize cursor placement after rewrite: the cursor is already at command end, so compare left presses against C-a + right presses; use C-a when the target is in the first half
 
 ## symmetric on last line movements
 #enhancement #popup
