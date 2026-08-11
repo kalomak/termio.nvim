@@ -765,16 +765,23 @@ local function map_integrated_keymaps(buf)
   map_visual_paste_keymaps(buf)
 end
 
-function M.enable()
-  for _, buffer_state in pairs(M.buffers or {}) do
-    buffer_state.keymaps:enable()
+local function update_buffer_keymaps(action)
+  for buf, buffer_state in pairs(M.buffers or {}) do
+    if vim.api.nvim_buf_is_valid(buf) then
+      buffer_state.keymaps[action](buffer_state.keymaps)
+    else
+      log.debug("integrated.buffer.invalid", { buf = buf })
+      M.buffers[buf] = nil
+    end
   end
 end
 
+function M.enable()
+  update_buffer_keymaps("enable")
+end
+
 function M.disable()
-  for _, buffer_state in pairs(M.buffers or {}) do
-    buffer_state.keymaps:disable()
-  end
+  update_buffer_keymaps("disable")
 end
 
 M.setup = function()

@@ -55,6 +55,22 @@ T["integrated keymaps"]["disable unloads editor keymaps but keeps toggle"] = fun
   MiniTest.expect.equality(has_map("t", "<CR>"), true)
 end
 
+T["integrated keymaps"]["disable ignores invalid tracked buffers"] = function()
+  local buf = Helpers.open_shell(child)
+  child.lua([[stale_keymaps = require("termio.editors.integrated").buffers[...].keymaps]], { buf })
+  child.cmd("bwipeout! " .. buf)
+  child.lua(
+    [[require("termio.editors.integrated").buffers[...] = { keymaps = stale_keymaps }]],
+    { buf }
+  )
+  MiniTest.expect.equality(child.api.nvim_buf_is_valid(buf), false)
+  child.lua([[require("termio").disable()]])
+  MiniTest.expect.equality(
+    child.lua_get([[require("termio.editors.integrated").buffers[...] == nil]], { buf }),
+    true
+  )
+end
+
 local function get_cursor_index_in_command(buf)
   local win = child.api.nvim_get_current_win()
   return child.lua_get([=[require("termio").cursor_index_in_command(...)]=], { win, buf })
