@@ -51,14 +51,13 @@ function M.command_lines(command)
   return vim.split(command, "\n", { plain = true })
 end
 
-function M:prepare_data(ctx)
+function M:prepare_data(ctx, shell_state)
   local prompt = M.terminal_prompt_text(ctx.target_buf)
-  local shell = api().read_state(ctx.target_buf, ctx.target_win)
   return {
     prompt = prompt,
-    shell = shell,
-    cursor = ctx.cursor or shell.cursor,
-    lines = M.command_lines(prompt .. shell.command),
+    shell = shell_state,
+    cursor = ctx.cursor or shell_state.cursor,
+    lines = M.command_lines(prompt .. shell_state.command),
   }
 end
 
@@ -71,7 +70,6 @@ function M.prompt_start_cursor(buf)
 end
 
 function M.terminal_prompt_text(buf)
-  api().update_prompt_range(buf)
   local prompt_start, prompt_end = api().prompt_range(buf)
   if not prompt_start or not prompt_end then
     error("termio: missing prompt range")
@@ -273,13 +271,18 @@ function M:create_buffer(data)
   return edit_buf
 end
 
-function M:open(ctx)
+function M:open(ctx, shell_state)
   ctx = self:build_context(ctx)
   if helpers.is_editor_disabled(ctx.target_buf) then
     return false
   end
+  shell_state = shell_state or api().read_state(ctx.target_buf, ctx.target_win)
+  -- Shell output has no editable command state.
+  if not shell_state then
+    return false
+  end
   vim.cmd.stopinsert()
-  local data = self:prepare_data(ctx)
+  local data = self:prepare_data(ctx, shell_state)
   local edit_buf, edit_win = self:create_editor_window(ctx, data)
   M.apply_window_style(edit_win)
   M.set_initial_cursor(edit_buf, edit_win, data.shell.command, data.cursor)
@@ -406,13 +409,21 @@ function M.apply_terminal_open_keymaps(buf, group, open, opts)
   opts = opts or {}
   local modes = opts.modes or { "t" }
   for _, mode in ipairs(modes) do
-    local map = function()
+    local handle_open_key = function()
+      local shell_state = api().read_state(buf, vim.fn.bufwinid(buf))
+      if not shell_state then
+        helpers.send_keys(config.options.editor.open, buf)
+        return
+      end
       if opts.stopinsert or (opts.stopinsert_modes and opts.stopinsert_modes[mode]) then
         vim.cmd.stopinsert()
       end
-      open({ target_buf = buf, target_win = vim.fn.bufwinid(buf) })
+      local opened = open({ target_buf = buf, target_win = vim.fn.bufwinid(buf) }, shell_state)
+      if not opened then
+        helpers.send_keys(config.options.editor.open, buf)
+      end
     end
-    group:map(mode, config.options.editor.open, map)
+    group:map(mode, config.options.editor.open, handle_open_key)
   end
   return group
 end
@@ -452,7 +463,7 @@ function M.apply_terminal_open_then_keymaps(buf, group, open, opts)
     for _, key in ipairs(keys) do
       local map_mode = mode
       local map_key = key
-      local map = function()
+      local open_then_replay_key = function()
         -- Outside the editable command, keep the terminal's normal key behavior.
         -- TODO: make this optional, pasting outside is fun too
         if not editable_zone.contains(buf) then
@@ -477,7 +488,7 @@ function M.apply_terminal_open_then_keymaps(buf, group, open, opts)
           end)
         end
       end
-      group:map(map_mode, map_key, map)
+      group:map(map_mode, map_key, open_then_replay_key)
     end
   end
   return group
@@ -504,8 +515,8 @@ end
 function M:setup_terminal_open(name, opts)
   opts = opts or {}
   opts.buffers = self.buffers
-  M.register_terminal_open(name, function(ctx)
-    return self.open(ctx)
+  M.register_terminal_open(name, function(ctx, shell_state)
+    return self.open(ctx, shell_state)
   end, opts)
 end
 

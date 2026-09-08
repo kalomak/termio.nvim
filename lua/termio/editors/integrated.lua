@@ -36,7 +36,7 @@ local function ensure_command_start_cursor(buf)
 end
 
 local function read_editor_state(buf, win)
-  return api.read_state(buf, win, nil, "buffer", false)
+  return api.read_state(buf, win, { backend = "buffer", cache = false })
 end
 
 local function read_debounced_state(buf)
@@ -244,7 +244,7 @@ end
 local function set_termio_keymap(buf, mode, lhs, event, action, opts)
   opts = opts or {}
   local disabled_return = opts.expr and "" or nil
-  M.buffers[buf].keymaps:map(mode, lhs, function()
+  M.buffers[buf].editor_keymaps:map(mode, lhs, function()
     return run_termio_action(buf, event, action, disabled_return)
   end, opts)
 end
@@ -485,12 +485,16 @@ function M.open(ctx)
   if not helpers.is_enabled_terminal(buf) then
     error("termio: terminal buffer name does not match editor.terminal_name_pattern")
   end
+  -- TODO: this guard should be outside this function
   if helpers.is_editor_disabled(buf) then
     log.debug("integrated.open.disabled", { buf = buf, win = win })
     return false
   end
   local buffer_state = helpers.ensure_buffer_state(api.buffers, buf)
-  local shell_state = api.read_state(buf, win)
+  local shell_state = api.read_state(buf, win, { refresh_prompt = false })
+  if not shell_state then
+    return false
+  end
   local cursor = vim.api.nvim_win_get_cursor(win)
   -- HACK: Entering normal mode moves cursor back by one in neovim, if we read state from the
   -- buffer, we need to undo this cursor move in shell_state
@@ -503,64 +507,104 @@ function M.open(ctx)
   wait_until_command_is_rendered(buf, buffer_state.shell_state.command)
   cursor = move_cursor_back_to_editable_zone(buf, cursor, win, #buffer_state.shell_state.command)
   refresh_integrated_state(buf, cursor, win)
+  M.buffers[buf].editor_open = true
+  M.buffers[buf].editor_keymaps:enable()
   return true
 end
 
-local function map_config_keymaps(buf)
+---Close the integrated terminal editor.
+---@param buf integer
+function M.close(buf)
   local buffer_state = M.buffers[buf]
-  local handlers = {
-    open = function(lhs)
-      return function()
-        log.debug("integrated.key.open", { buf = buf, mode = vim.api.nvim_get_mode().mode })
-        return run_termio_action(buf, "integrated.key.open", function()
-          vim.cmd("stopinsert")
-        end, helpers.term_codes(lhs))
+  buffer_state.editor_open = false
+  buffer_state.editor_keymaps:disable()
+end
+
+local function create_open_handler(buf, lhs)
+  return function()
+    log.debug("integrated.key.open", { buf = buf, mode = vim.api.nvim_get_mode().mode })
+    return run_termio_action(buf, "integrated.key.open", function()
+      -- This check has to be done before calling read_state since we don't
+      -- want to flicker normal mode. This separation between keymap and
+      -- actual 'open' call is causing complexity and should be removed if
+      -- possible.
+      api.update_prompt_range(buf)
+      if not api.can_read_state(buf) then
+        helpers.send_keys(lhs, buf)
+        return
       end
-    end,
-    submit = function()
-      return run_termio_action(buf, "integrated.key.submit", function()
-        local mode = vim.api.nvim_get_mode().mode
-        log.debug("integrated.key.submit", { buf = buf, mode = mode })
-        if mode:sub(1, 1) == "t" then
-          helpers.send_keys("<CR>", buf)
-        else
-          M.write(buf)
-          helpers.send_keys("<CR>", buf)
-        end
-        vim.cmd("startinsert")
-      end)
-    end,
-    write = function()
-      return run_termio_action(buf, "integrated.key.write", function()
-        log.debug("integrated.key.write", { buf = buf, mode = vim.api.nvim_get_mode().mode })
+      vim.cmd("stopinsert")
+    end, helpers.term_codes(lhs))
+  end
+end
+
+local function create_submit_handler(buf)
+  return function()
+    return run_termio_action(buf, "integrated.key.submit", function()
+      local mode = vim.api.nvim_get_mode().mode
+      log.debug("integrated.key.submit", { buf = buf, mode = mode })
+      if mode:sub(1, 1) == "t" then
+        helpers.send_keys("<CR>", buf)
+      else
         M.write(buf)
-      end)
-    end,
-    toggle = function()
-      log.debug("integrated.key.toggle", { buf = buf, mode = vim.api.nvim_get_mode().mode })
-      require("termio").toggle()
-    end,
+        helpers.send_keys("<CR>", buf)
+      end
+      vim.cmd("startinsert")
+    end)
+  end
+end
+
+local function create_write_handler(buf)
+  return function()
+    return run_termio_action(buf, "integrated.key.write", function()
+      log.debug("integrated.key.write", { buf = buf, mode = vim.api.nvim_get_mode().mode })
+      M.write(buf)
+    end)
+  end
+end
+
+local function create_toggle_handler(buf)
+  return function()
+    log.debug("integrated.key.toggle", { buf = buf, mode = vim.api.nvim_get_mode().mode })
+    require("termio").toggle()
+  end
+end
+
+local function map_configured_keymaps(group, mode, configured, action_specs, buf)
+  for lhs, action in pairs(configured) do
+    local spec = action_specs[action]
+    if spec then
+      local map = spec.always and group.always or group.map
+      map(group, mode, lhs, spec.create(buf, lhs))
+    end
+  end
+end
+
+local function map_config_keymaps(buf)
+  local action_specs = {
+    open = { create = create_open_handler },
+    submit = { create = create_submit_handler },
+    write = { create = create_write_handler },
+    toggle = {
+      always = true,
+      create = create_toggle_handler,
+    },
   }
-  for lhs, action in pairs(config.options.editor.keys.t) do
-    local handler = action == "open" and handlers.open(lhs) or handlers[action]
-    if handler then
-      if action == "toggle" then
-        buffer_state.keymaps:always("t", lhs, handler)
-      else
-        buffer_state.keymaps:map("t", lhs, handler)
-      end
-    end
-  end
-  for lhs, action in pairs(config.options.editor.keys.n) do
-    local handler = handlers[action]
-    if handler then
-      if action == "toggle" then
-        buffer_state.keymaps:always("n", lhs, handler)
-      else
-        buffer_state.keymaps:map("n", lhs, handler)
-      end
-    end
-  end
+  local buffer_state = M.buffers[buf]
+  map_configured_keymaps(
+    buffer_state.terminal_keymaps,
+    "t",
+    config.options.editor.keys.t,
+    action_specs,
+    buf
+  )
+  map_configured_keymaps(
+    buffer_state.editor_keymaps,
+    "n",
+    config.options.editor.keys.n,
+    action_specs,
+    buf
+  )
 end
 
 local function log_integrated_key(event, buf)
@@ -765,11 +809,13 @@ local function map_integrated_keymaps(buf)
   map_visual_paste_keymaps(buf)
 end
 
-local function update_buffer_keymaps(action)
+-- enable/disable calls this to update mappings in all terminals
+local function update_buffer_keymaps(update)
   for buf, buffer_state in pairs(M.buffers or {}) do
     if vim.api.nvim_buf_is_valid(buf) then
-      buffer_state.keymaps[action](buffer_state.keymaps)
+      update(buffer_state)
     else
+      -- TODO: Remove this? cleanup through BufDelete.
       log.debug("integrated.buffer.invalid", { buf = buf })
       M.buffers[buf] = nil
     end
@@ -777,11 +823,19 @@ local function update_buffer_keymaps(action)
 end
 
 function M.enable()
-  update_buffer_keymaps("enable")
+  update_buffer_keymaps(function(buffer_state)
+    buffer_state.terminal_keymaps:enable()
+    if buffer_state.editor_open then
+      buffer_state.editor_keymaps:enable()
+    end
+  end)
 end
 
 function M.disable()
-  update_buffer_keymaps("disable")
+  update_buffer_keymaps(function(buffer_state)
+    buffer_state.terminal_keymaps:disable()
+    buffer_state.editor_keymaps:disable()
+  end)
 end
 
 M.setup = function()
@@ -795,8 +849,10 @@ M.setup = function()
       vim.bo[args.buf].filetype = config.options.editor.filetype
       vim.b[args.buf].termio_editor = "integrated"
       M.buffers[args.buf] = {
+        editor_keymaps = keymaps.group({ buffer = args.buf, enabled = false }),
+        editor_open = false,
         has_unsynced_edits = false,
-        keymaps = keymaps.group({
+        terminal_keymaps = keymaps.group({
           buffer = args.buf,
           enabled = not helpers.is_editor_disabled(args.buf),
         }),
@@ -839,6 +895,7 @@ M.setup = function()
         buffer = args.buf,
         callback = function(args)
           debounced_sync.suspend(args.buf)
+          M.close(args.buf)
         end,
       })
       vim.api.nvim_create_autocmd("BufDelete", {

@@ -294,7 +294,10 @@ Helpers.wait_for_read_command = function(child, buf, expected, timeout)
   local ok, err = pcall(function()
     Helpers.wait_until(child, function()
       local did_read, result = pcall(function()
-        return child.lua_get([[require("termio").read_command(..., nil, "buffer", false)]], { buf })
+        return child.lua_get(
+          [[require("termio").read_command(..., { backend = "buffer", cache = false })]],
+          { buf }
+        )
       end)
       if not did_read then
         read_error = result
@@ -323,7 +326,10 @@ Helpers.wait_for_editable_command = function(child, buf, expected, timeout)
   local ok = pcall(function()
     Helpers.wait_until(child, function()
       local did_read, result = pcall(function()
-        return child.lua_get([[require("termio").read_command(..., nil, "buffer", false)]], { buf })
+        return child.lua_get(
+          [[require("termio").read_command(..., { backend = "buffer", cache = false })]],
+          { buf }
+        )
       end)
       if not did_read then
         read_error = result

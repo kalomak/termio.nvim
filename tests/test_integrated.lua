@@ -18,6 +18,15 @@ T["integrated repl"] = MiniTest.new_set()
 
 T["integrated keymaps"] = MiniTest.new_set()
 
+local function has_buffer_map(buf, mode, lhs)
+  return child.lua_get(
+    [[(function(buf, mode, lhs)
+      return vim.tbl_contains(vim.tbl_map(function(map) return map.lhs end, vim.api.nvim_buf_get_keymap(buf, mode)), lhs)
+    end)(...)]],
+    { buf, mode, lhs }
+  )
+end
+
 T["integrated keymaps"]["skips terminal names outside allowlist"] = function()
   child.cmd("terminal /bin/sh")
   child.wait(100)
@@ -36,33 +45,38 @@ T["integrated keymaps"]["allows configured terminal name pattern"] = function()
   MiniTest.expect.equality(Helpers.has_terminal_esc_mapping(child), true)
 end
 
-T["integrated keymaps"]["disable unloads editor keymaps but keeps toggle"] = function()
+T["integrated keymaps"]["disable unloads action keymaps but keeps toggle"] = function()
   local buf = Helpers.open_shell(child)
-  local has_map = function(mode, lhs)
-    return child.lua_get(
-      [[(function(buf, mode, lhs)
-        return vim.tbl_contains(vim.tbl_map(function(map) return map.lhs end, vim.api.nvim_buf_get_keymap(buf, mode)), lhs)
-      end)(...)]],
-      { buf, mode, lhs }
-    )
-  end
-  MiniTest.expect.equality(has_map("t", "<CR>"), true)
-  MiniTest.expect.equality(has_map("t", "<M-t>"), true)
+  MiniTest.expect.equality(has_buffer_map(buf, "t", "<CR>"), true)
+  MiniTest.expect.equality(has_buffer_map(buf, "t", "<M-t>"), true)
   child.lua([[require("termio").disable()]])
-  MiniTest.expect.equality(has_map("t", "<CR>"), false)
-  MiniTest.expect.equality(has_map("t", "<M-t>"), true)
+  MiniTest.expect.equality(has_buffer_map(buf, "t", "<CR>"), false)
+  MiniTest.expect.equality(has_buffer_map(buf, "t", "<M-t>"), true)
   child.lua([[require("termio").enable()]])
-  MiniTest.expect.equality(has_map("t", "<CR>"), true)
+  MiniTest.expect.equality(has_buffer_map(buf, "t", "<CR>"), true)
+end
+
+T["integrated keymaps"]["editor maps follow editor lifecycle"] = function()
+  local buf = Helpers.open_shell(child)
+  MiniTest.expect.equality(has_buffer_map(buf, "n", "a"), false)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  Helpers.open_editable_normal_mode(child, buf)
+  MiniTest.expect.equality(has_buffer_map(buf, "n", "a"), true)
+  child.lua([[require("termio").disable()]])
+  MiniTest.expect.equality(has_buffer_map(buf, "n", "a"), false)
+  child.lua([[require("termio").enable()]])
+  MiniTest.expect.equality(has_buffer_map(buf, "n", "a"), true)
+  child.api.nvim_input("a")
+  Helpers.wait_for_mode(child, "t")
+  MiniTest.expect.equality(has_buffer_map(buf, "n", "a"), false)
 end
 
 T["integrated keymaps"]["disable ignores invalid tracked buffers"] = function()
   local buf = Helpers.open_shell(child)
-  child.lua([[stale_keymaps = require("termio.editors.integrated").buffers[...].keymaps]], { buf })
+  child.lua([=[stale_buffer = require("termio.editors.integrated").buffers[...] ]=], { buf })
   child.cmd("bwipeout! " .. buf)
-  child.lua(
-    [[require("termio.editors.integrated").buffers[...] = { keymaps = stale_keymaps }]],
-    { buf }
-  )
+  child.lua([[require("termio.editors.integrated").buffers[...] = stale_buffer]], { buf })
   MiniTest.expect.equality(child.api.nvim_buf_is_valid(buf), false)
   child.lua([[require("termio").disable()]])
   MiniTest.expect.equality(
@@ -77,7 +91,10 @@ local function get_cursor_index_in_command(buf)
 end
 
 local function read_integrated_command(buf)
-  return child.lua_get([[require("termio").read_command(..., nil, "buffer", false)]], { buf })
+  return child.lua_get(
+    [[require("termio").read_command(..., { backend = "buffer", cache = false })]],
+    { buf }
+  )
 end
 
 local function open_python_repl(opts)
@@ -112,6 +129,42 @@ T["integrated edit"]["open key leaves terminal mode"] = function()
   Helpers.wait_for_mode(child, "t")
   Helpers.open_terminal_normal_mode(child)
   MiniTest.expect.equality(child.lua_get("vim.api.nvim_get_mode().mode"), "nt")
+end
+
+T["integrated edit"]["open key stays in terminal mode during shell output"] = function()
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("sleep 10<CR>")
+  Helpers.wait_until(child, function()
+    return child.lua_get([[require("termio.api").buffers[...].shell_phase]], { buf }) == "output"
+  end)
+  child.lua([[
+    local helpers = require("termio.util.helpers")
+    helpers.send_keys = function(key, target_buf)
+      _G.termio_sent_key = { key, target_buf }
+    end
+  ]])
+  child.api.nvim_input("<Esc>")
+  Helpers.wait_until(child, function()
+    return child.lua_get([[_G.termio_sent_key ~= nil]])
+  end)
+  MiniTest.expect.equality(child.lua_get([[_G.termio_sent_key]]), { "<Esc>", buf })
+  MiniTest.expect.equality(child.lua_get("vim.api.nvim_get_mode().mode"), "t")
+end
+
+T["integrated edit"]["manual terminal leave during output keeps native insert keys"] = function()
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("sleep 10<CR>")
+  Helpers.wait_until(child, function()
+    return child.lua_get([[require("termio.api").buffers[...].shell_phase]], { buf }) == "output"
+  end)
+  child.api.nvim_input([[<C-\><C-n>]])
+  Helpers.wait_for_mode(child, "nt")
+  child.api.nvim_input("a")
+  Helpers.wait_for_mode(child, "t")
 end
 
 T["integrated edit"]["open key stays in terminal mode when disabled"] = function()
@@ -182,6 +235,16 @@ T["integrated repl"]["edits nested Python command"] = function()
   Helpers.wait_for_read_command(child, buf, "print('hello goodbye again')")
   child.api.nvim_input("<CR>")
   Helpers.wait_for_shell_output(child, buf, "hello goodbye again", nil, ">>> ")
+end
+
+T["integrated repl"]["refreshes nested Python prompt on open"] = function()
+  local buf = open_python_repl({ nested_shell = true })
+  child.api.nvim_input("1 + 1<Esc>")
+  Helpers.wait_for_mode(child, "nt")
+  MiniTest.expect.equality(
+    child.lua_get([[require("termio.api").buffers[...].shell_phase]], { buf }),
+    "input"
+  )
 end
 
 T["integrated repl"]["open keeps cursor at Python command end"] = function()

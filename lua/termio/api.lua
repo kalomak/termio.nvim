@@ -43,7 +43,6 @@ end
 ---@return { rows: string[], cursor: integer[]?, cursor_index: integer? }
 ---@private
 local function read_raw_state(target, win, timeout_ms, backend)
-  Termio.update_prompt_range(target)
   local _, prompt_end_cursor = Termio.prompt_range(target)
   if not prompt_end_cursor then
     error("termio: missing prompt end cursor")
@@ -64,6 +63,16 @@ function Termio.update_prompt_range(buf)
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
   terminal_buffer.update_prompt_cursors_from_patterns(Termio.buffers, target)
+end
+
+---Return whether command state is available in the current shell phase.
+---@param buf? integer
+---@return boolean
+function Termio.can_read_state(buf)
+  local target = helpers.current_buf(buf)
+  helpers.assert_terminal(target)
+  local phase = helpers.ensure_buffer_state(Termio.buffers, target).shell_phase
+  return phase == nil or phase == "input"
 end
 
 ---Return the cached prompt range, or nil when no prompt has been detected yet.
@@ -97,32 +106,45 @@ function Termio.cursor_index_in_command(win, buf)
   return terminal_buffer.read_state(Termio.buffers, target, win, prompt_end_cursor).cursor_index
 end
 
+---@class TermioReadOptions
+---@field timeout_ms? integer
+---@field backend? "auto"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
+---@field cache? boolean Update the cached shell state. Defaults to true.
+---@field refresh_prompt? boolean Refresh the prompt range before reading. Defaults to true.
+---@field force? boolean Read outside the detected input phase.
+
 ---Query the current shell command buffer.
 ---@param buf? integer
----@param timeout_ms? integer
----@param backend? "auto"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
----@param cache? boolean Update the cached shell state. Defaults to true.
----@return string
-function Termio.read_command(buf, timeout_ms, backend, cache)
-  return Termio.read_state(buf, nil, timeout_ms, backend, cache).command
+---@param opts? TermioReadOptions
+---@return string?
+function Termio.read_command(buf, opts)
+  local state = Termio.read_state(buf, nil, opts)
+  return state and state.command or nil
 end
 
 ---Query the current shell command and cursor state.
+---TODO: refactor, too many boolean flags
 ---@param buf? integer
 ---@param win? integer
----@param timeout_ms? integer
----@param backend? "auto"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
----@param cache? boolean Update the cached shell state. Defaults to true.
----@return { command: string, cursor: integer? }
-function Termio.read_state(buf, win, timeout_ms, backend, cache)
+---@param opts? TermioReadOptions
+---@return CommandState? state Nil outside the input phase unless forced.
+function Termio.read_state(buf, win, opts)
+  opts = opts or {}
   local target = helpers.current_buf(buf)
   helpers.assert_terminal(target)
-  backend = backend or config.options.backend
+  local backend = opts.backend or config.options.backend
   if backend ~= "auto" and backend ~= "buffer" then
     error("termio: backend must be 'auto' or 'buffer'")
   end
-  local command_state = helpers.normalize_state(read_raw_state(target, win, timeout_ms, backend))
-  if cache ~= false then
+  if opts.refresh_prompt ~= false then
+    Termio.update_prompt_range(target)
+  end
+  if opts.force ~= true and not Termio.can_read_state(target) then
+    return nil
+  end
+  local command_state =
+    helpers.normalize_state(read_raw_state(target, win, opts.timeout_ms, backend))
+  if opts.cache ~= false then
     local cached_state = helpers.ensure_buffer_state(Termio.buffers, target).shell_state
     cached_state.command = command_state.command
     cached_state.cursor = command_state.cursor

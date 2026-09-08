@@ -71,7 +71,7 @@ T["read_state()"]["reads state and updates cache"] = function()
     { buf }
   )
   local state = child.lua_get(
-    [[require("termio.api").read_state(..., vim.api.nvim_get_current_win(), nil, "buffer")]],
+    [[require("termio.api").read_state(..., vim.api.nvim_get_current_win(), { backend = "buffer" })]],
     { buf }
   )
   local expected = { command = "echo hello", cursor = 10 }
@@ -79,6 +79,30 @@ T["read_state()"]["reads state and updates cache"] = function()
   MiniTest.expect.equality(
     child.lua_get([[require("termio.api").buffers[...].shell_state]], { buf }),
     expected
+  )
+end
+
+T["read_state()"]["does not read during shell output unless forced"] = function()
+  local buf = Helpers.open_shell(child)
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
+  child.api.nvim_input("sleep 10<CR>")
+  Helpers.wait_until(child, function()
+    return child.lua_get([[require("termio.api").buffers[...].shell_phase]], { buf }) == "output"
+  end)
+  MiniTest.expect.equality(
+    child.lua_get(
+      [[require("termio.api").read_state(..., vim.api.nvim_get_current_win(), { backend = "buffer" }) == nil]],
+      { buf }
+    ),
+    true
+  )
+  MiniTest.expect.equality(
+    child.lua_get(
+      [[require("termio.api").read_state(..., vim.api.nvim_get_current_win(), { backend = "buffer", cache = false, force = true }) ~= nil]],
+      { buf }
+    ),
+    true
   )
 end
 

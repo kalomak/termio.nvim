@@ -56,8 +56,8 @@ local function set_editor_options(edit_buf, edit_win)
   vim.wo[edit_win].wrap = true
 end
 
-function M:prepare_data(ctx)
-  local data = popup.prepare_data(self, ctx)
+function M:prepare_data(ctx, shell_state)
+  local data = popup.prepare_data(self, ctx, shell_state)
   -- We clear command behind the overlay so it does not show up when
   -- overlay window gets smaller.
   helpers.clear_command_line(ctx.target_buf)
