@@ -112,7 +112,7 @@ require("termio").setup({
   editor = {
     -- Bundled editor to use. nil gives API-only mode.
     type = "integrated", -- "integrated" | "centered" | "overlay" | nil
-    -- Filetype assigned to bundled editor buffers.
+    -- Filetype assigned to centered and overlay editor buffers.
     filetype = "bash",
     -- Vim regex matched against terminal buffer names before enabling editor keymaps.
     terminal_name_pattern = [[\v(:| )(/[^ ]*/)?(zsh|bash|fish)( |$)]],

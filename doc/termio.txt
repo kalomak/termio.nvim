@@ -184,7 +184,7 @@ Default values:
       command_debounce_ms = 100,
       -- Delay before cursor changes are synchronized to the shell; nil disables synchronization.
       cursor_debounce_ms = 20,
-      -- Filetype assigned to bundled editor buffers.
+      -- Filetype assigned to centered and overlay editor buffers.
       filetype = "bash",
       -- Vim regex matched against terminal buffer names before enabling the editor.
       -- Set to nil to accept every terminal buffer.
