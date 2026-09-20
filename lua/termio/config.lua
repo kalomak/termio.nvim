@@ -11,6 +11,8 @@ Termio.defaults = {
   backend = "auto",
   -- Vim regexes used to detect prompts in terminal text.
   prompt_patterns = { [[^>>> ]], [[^\.\.\. ]] },
+  -- Vim regexes. The command ends at the earliest match after its start.
+  command_end_patterns = {},
   -- Ordered Lua pattern replacements applied after reading a command.
   read_replace_patterns = {},
   -- Ordered Lua pattern replacements applied before writing a command.

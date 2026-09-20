@@ -4,8 +4,10 @@ function M.build()
   local log_level = (vim.env.TERMIO_LOG_LEVEL or "debug"):upper()
   local options = {
     log_level = assert(vim.log.levels[log_level]),
-    prompt_patterns = { [[^>>> ]], [[^\.\.\. ]], [[^[›»] ]] },
-    read_replace_patterns = { { [[^%s*gpt%-%d+%.%d+.*$]], "" } },
+    -- Claude Code separates its `❯` marker from the command with U+00A0.
+    prompt_patterns = { [[^>>> ]], [[^\.\.\. ]], "^[›»❯][ \\u00A0]" },
+    -- Codex pads below its composer, Claude Code closes its box with U+2500.
+    command_end_patterns = { [[^\s*$]], [[^─]] },
     editor = {
       type = vim.env.TERMIO_EDITOR or "integrated",
       popup = {

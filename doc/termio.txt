@@ -60,6 +60,15 @@ Parameters ~
 {buf} `(optional)` `(integer)`
 
 ------------------------------------------------------------------------------
+                                                       *Termio.can_read_state()*
+                         `Termio.can_read_state`({buf})
+whether command state is available in the current shell phase.
+Parameters ~
+{buf} `(optional)` `(integer)`
+Return ~
+`(boolean)`
+
+------------------------------------------------------------------------------
                                                          *Termio.prompt_range()*
                           `Termio.prompt_range`({buf})
 the cached prompt range, or nil when no prompt has been detected yet.
@@ -90,27 +99,36 @@ Return ~
 `(integer)` `(optional)`
 
 ------------------------------------------------------------------------------
+Class ~
+{TermioReadOptions}
+Fields ~
+{timeout_ms} `(optional)` `(integer)`
+{backend} `(optional)` "`(auto)`"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
+{cache} `(optional)` `(boolean)` Update the cached shell state. Defaults to true.
+{refresh_prompt} `(optional)` `(boolean)` Refresh the prompt range before reading. Defaults to true.
+{force} `(optional)` `(boolean)` Read outside the detected input phase.
+
+------------------------------------------------------------------------------
                                                          *Termio.read_command()*
-             `Termio.read_command`({buf}, {timeout_ms}, {backend})
+                      `Termio.read_command`({buf}, {opts})
 the current shell command buffer.
 Parameters ~
 {buf} `(optional)` `(integer)`
-{timeout_ms} `(optional)` `(integer)`
-{backend} `(optional)` "`(auto)`"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
+{opts} `(optional)` `(TermioReadOptions)`
 Return ~
-`(string)`
+`(string)` `(optional)`
 
 ------------------------------------------------------------------------------
                                                            *Termio.read_state()*
-           `Termio.read_state`({buf}, {win}, {timeout_ms}, {backend})
+                   `Termio.read_state`({buf}, {win}, {opts})
 the current shell command and cursor state.
+refactor, too many boolean flags
 Parameters ~
 {buf} `(optional)` `(integer)`
 {win} `(optional)` `(integer)`
-{timeout_ms} `(optional)` `(integer)`
-{backend} `(optional)` "`(auto)`"|"buffer" Communication backend. "auto" tries shell integration first; "buffer" reads rendered terminal text.
+{opts} `(optional)` `(TermioReadOptions)`
 Return ~
-`({ command: string, cursor: integer? })`
+`(CommandState)` `(optional)` state Nil outside the input phase unless forced.
 
 ------------------------------------------------------------------------------
                                          *Termio.clear_completion_suggestions()*
@@ -163,6 +181,8 @@ Default values:
     backend = "auto",
     -- Vim regexes used to detect prompts in terminal text.
     prompt_patterns = { [[^>>> ]], [[^\.\.\. ]] },
+    -- Vim regexes. The command ends at the earliest match after its start.
+    command_end_patterns = {},
     -- Ordered Lua pattern replacements applied after reading a command.
     read_replace_patterns = {},
     -- Ordered Lua pattern replacements applied before writing a command.
@@ -201,7 +221,6 @@ Default values:
           ["<Esc>"] = "open",
           ["<CR>"] = "submit",
           ["<C-u>"] = "clear",
-          ["<C-s>"] = "write",
           ["<M-t>"] = "toggle",
         },
         n = {

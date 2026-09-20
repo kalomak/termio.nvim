@@ -28,4 +28,39 @@ T["buffer backend"] = MiniTest.new_set()
 --   MiniTest.expect.equality(child.lua_get([[require("termio").read_command(...)]], { buf }), "ls")
 -- end
 
+T["command_end_patterns"] = MiniTest.new_set()
+
+local function read_command_text(lines, patterns)
+  return child.lua_get(string.format(
+    [[
+    (function()
+    require("termio.config").options.command_end_patterns = %s
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, %s)
+    return require("termio.terminal_buffer").command_text(buf, { 1, 2 })
+    end)()
+  ]],
+    vim.inspect(patterns),
+    vim.inspect(lines)
+  ))
+end
+
+-- Interactive TUIs (e.g. codex) draw a frame below the input line.
+T["command_end_patterns"]["stops reading at a matching row"] = function()
+  MiniTest.expect.equality(
+    read_command_text({ "> echo hi", "BOTTOM----", "gpt-5.1" }, { "^\\s*BOTTOM" }),
+    "echo hi"
+  )
+end
+
+-- The frame can also close on the command row itself.
+T["command_end_patterns"]["stops reading inside a matching row"] = function()
+  MiniTest.expect.equality(read_command_text({ "> echo hi   RIGHT" }, { "\\s*RIGHT" }), "echo hi")
+end
+
+-- A prompt pattern must not be mistaken for the end of the command it starts.
+T["command_end_patterns"]["ignores matches before the command start"] = function()
+  MiniTest.expect.equality(read_command_text({ "> echo hi" }, { "^>" }), "echo hi")
+end
+
 return T

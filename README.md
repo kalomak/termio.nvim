@@ -106,6 +106,8 @@ Defaults live in `lua/termio/config.lua`.
 require("termio").setup({
   -- Vim regexes. Command text starts after the matched prompt.
   prompt_patterns = { [[^>>> ]], [[^\.\.\. ]] },
+  -- Vim regexes. The command ends at the earliest match after its start.
+  command_end_patterns = {},
   -- Lua pattern replacements as { pattern, replacement } pairs.
   read_replace_patterns = {},
   write_replace_patterns = {},
@@ -374,16 +376,16 @@ Check that prompt is as expected:
 '\x01\x1b]133;A\x07\x02>>> \x01\x1b]133;B\x07\x02'
 ```
 
-### Example: Codex - Replace patterns
+### Example: Codex - Command end patterns
 
-Interactive programs like codex may render content that should not become part
-of the editable command. `read_replace_patterns` can be used to filter out that
-content:
+Interactive programs like codex can have content after the input box.
+`command_end_patterns` marks where the command stops. Everything from the match
+on is excluded from reads and from the editable zone.
 
 ```lua
 require("termio").setup({
   prompt_patterns = { [[^[›»] ]] }, -- Needed for codex as it does not provide OSC133
-  read_replace_patterns = { { [[^%s*gpt%-%d+%.%d+.*$]], "" } }, -- Replace patterns after command area with ""
+  command_end_patterns = { [[^\s*$]] }, -- Padding row below the codex composer
 })
 ```
 

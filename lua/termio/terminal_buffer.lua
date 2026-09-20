@@ -3,8 +3,32 @@ local config = require("termio.config")
 
 local M = {}
 
+local function configured_patterns(option_name)
+  return (config.options or config.defaults)[option_name] or {}
+end
+
 local function configured_prompt_patterns()
-  return (config.options or config.defaults).prompt_patterns or {}
+  return configured_patterns("prompt_patterns")
+end
+
+---Match a line against a configured list of vim regexes.
+---@param line string
+---@param option_name string
+---@return integer?, integer?
+local function match_configured_pattern(line, option_name)
+  for _, pattern in ipairs(configured_patterns(option_name)) do
+    if type(pattern) ~= "string" then
+      error("termio: " .. option_name .. " entries must be strings")
+    end
+    local ok, regex = pcall(vim.regex, pattern)
+    if not ok then
+      error("termio: invalid " .. option_name .. " entry: " .. tostring(pattern))
+    end
+    local start_col, end_col = regex:match_str(line)
+    if start_col then
+      return start_col, end_col
+    end
+  end
 end
 
 local function prompt_pattern_scan_start_row(state)
@@ -15,19 +39,14 @@ local function prompt_pattern_scan_start_row(state)
 end
 
 local function match_prompt(line)
-  for _, pattern in ipairs(configured_prompt_patterns()) do
-    if type(pattern) ~= "string" then
-      error("termio: prompt_patterns entries must be strings")
-    end
-    local ok, regex = pcall(vim.regex, pattern)
-    if not ok then
-      error("termio: invalid prompt_patterns entry: " .. tostring(pattern))
-    end
-    local start_col, end_col = regex:match_str(line)
-    if start_col then
-      return start_col, end_col
-    end
-  end
+  return match_configured_pattern(line, "prompt_patterns")
+end
+
+---Byte offset in a command row where trailing TUI chrome starts.
+---@param line string
+---@return integer?
+local function command_end_col(line)
+  return (match_configured_pattern(line, "command_end_patterns"))
 end
 
 ---Update prompt start/end cursors from configured prompt regexes.
@@ -81,6 +100,15 @@ function M.command_rows(buf, start_cursor, stop_at_blank)
     end
     if index == row then
       line = line:sub(start_col + 1)
+    end
+    local end_col = command_end_col(line)
+    if end_col then
+      -- A row that is chrome from its first byte contributes no command text.
+      -- Callers join rows with "\n", so appending "" would add a trailing line.
+      if end_col > 0 then
+        rows[#rows + 1] = line:sub(1, end_col)
+      end
+      break
     end
     rows[#rows + 1] = line
   end
