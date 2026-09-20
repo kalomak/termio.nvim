@@ -105,8 +105,12 @@ Defaults live in `lua/termio/config.lua`.
 ```lua
 require("termio").setup({
   -- Vim regexes. Command text starts after the matched prompt.
-  prompt_patterns = { [[^>>> ]], [[^\.\.\. ]] },
+  -- prompt_patterns = { [[^[›»] ]] }, -- codex
+  -- prompt_patterns = { "^[›»❯][ \\u00A0]" }, -- claude code
+  prompt_patterns = { [[^>>> ]], [[^\.\.\. ]] }, -- python
   -- Vim regexes. The command ends at the earliest match after its start.
+  -- command_end_patterns = { [[^\s*$]] }, -- codex: padding row below the composer
+  -- command_end_patterns = { [[^─]] }, -- claude code: rule below the composer
   command_end_patterns = {},
   -- Lua pattern replacements as { pattern, replacement } pairs.
   read_replace_patterns = {},
