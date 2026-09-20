@@ -389,10 +389,23 @@ require("termio").setup({
 })
 ```
 
-## [Known issues/Planned features/Roadmap/TODO](./dev/doc/todo.md)
+## [Planned features/Roadmap/TODO](./dev/doc/todo.md)
 
 ## [Contributing](./dev/doc/contributing.md)
 
 ## [Development](./dev/doc/development.md)
 
 ## [Related projects](./dev/doc/related-projects.md)
+
+## Known issues
+
+### Cursor lands at command end in TUIs that batch bracketed paste
+
+`write_command` pastes the command, then sends `ESC[D` to walk the cursor back in
+the same input burst. Some TUIs, such as Claude Code, batch bracketed-paste input
+and drop those cursor keys, so the command text is correct but the cursor stays at
+the command end.
+
+Attempted fix on branch `defer-cursor-move`: send the cursor keys from
+`vim.defer_fn(.., 0)` so they form their own burst. It works maybe 70% of the time
+without a delay, and adding a delay does not fix every case.
