@@ -35,8 +35,18 @@ local function ensure_command_start_cursor(buf)
   return has_command_start_cursor(buf)
 end
 
+---Read shell state, defaulting to an empty command when it cannot be read.
+---@param buf integer
+---@param win integer
+---@param opts? TermioReadOptions
+---@return CommandState
+local function read_state_or_empty(buf, win, opts)
+  local state = ensure_command_start_cursor(buf) and api.read_state(buf, win, opts) or nil
+  return state or { command = "", cursor = 0 }
+end
+
 local function read_editor_state(buf, win)
-  return api.read_state(buf, win, { backend = "buffer", cache = false })
+  return read_state_or_empty(buf, win, { backend = "buffer", cache = false })
 end
 
 local function read_debounced_state(buf)
@@ -491,10 +501,7 @@ function M.open(ctx)
     return false
   end
   local buffer_state = helpers.ensure_buffer_state(api.buffers, buf)
-  local shell_state = api.read_state(buf, win, { refresh_prompt = false })
-  if not shell_state then
-    return false
-  end
+  local shell_state = read_state_or_empty(buf, win)
   local cursor = vim.api.nvim_win_get_cursor(win)
   -- HACK: Entering normal mode moves cursor back by one in neovim, if we read state from the
   -- buffer, we need to undo this cursor move in shell_state
@@ -504,7 +511,9 @@ function M.open(ctx)
   buffer_state.shell_state = shell_state
   api.clear_completion_suggestions(buf)
   log.debug("integrated.open", { buf = buf, win = win, shell_state = buffer_state.shell_state })
-  wait_until_command_is_rendered(buf, buffer_state.shell_state.command)
+  if has_command_start_cursor(buf) then
+    wait_until_command_is_rendered(buf, buffer_state.shell_state.command)
+  end
   cursor = move_cursor_back_to_editable_zone(buf, cursor, win, #buffer_state.shell_state.command)
   refresh_integrated_state(buf, cursor, win)
   M.buffers[buf].editor_open = true
@@ -524,15 +533,6 @@ local function create_open_handler(buf, lhs)
   return function()
     log.debug("integrated.key.open", { buf = buf, mode = vim.api.nvim_get_mode().mode })
     return run_termio_action(buf, "integrated.key.open", function()
-      -- This check has to be done before calling read_state since we don't
-      -- want to flicker normal mode. This separation between keymap and
-      -- actual 'open' call is causing complexity and should be removed if
-      -- possible.
-      api.update_prompt_range(buf)
-      if not api.can_read_state(buf) then
-        helpers.send_keys(lhs, buf)
-        return
-      end
       vim.cmd("stopinsert")
     end, helpers.term_codes(lhs))
   end

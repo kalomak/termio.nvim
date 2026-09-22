@@ -131,7 +131,7 @@ T["integrated edit"]["open key leaves terminal mode"] = function()
   MiniTest.expect.equality(child.lua_get("vim.api.nvim_get_mode().mode"), "nt")
 end
 
-T["integrated edit"]["open key stays in terminal mode during shell output"] = function()
+T["integrated edit"]["open key leaves terminal mode during shell output"] = function()
   local buf = Helpers.open_shell(child)
   child.api.nvim_input("i")
   Helpers.wait_for_mode(child, "t")
@@ -139,18 +139,38 @@ T["integrated edit"]["open key stays in terminal mode during shell output"] = fu
   Helpers.wait_until(child, function()
     return child.lua_get([[require("termio.api").buffers[...].shell_phase]], { buf }) == "output"
   end)
+  child.api.nvim_input("<Esc>")
+  Helpers.wait_for_mode(child, "nt")
+  -- The command cannot be read during output, so it defaults to empty.
+  MiniTest.expect.equality(
+    child.lua_get([[require("termio.api").buffers[...].shell_state.command]], { buf }),
+    ""
+  )
+end
+
+-- A shell without OSC133 and without a matching prompt pattern has no command
+-- start cursor. Leaving terminal mode must still reach normal mode, not fail.
+T["integrated edit"]["leaving terminal mode without a detected prompt does not warn"] = function()
+  child.cmd("terminal zsh -f -i")
+  local buf = child.api.nvim_get_current_buf()
   child.lua([[
-    local helpers = require("termio.util.helpers")
-    helpers.send_keys = function(key, target_buf)
-      _G.termio_sent_key = { key, target_buf }
+    local log = require("termio.util.log")
+    vim.g.termio_warn_events = {}
+    local warn = log.warn
+    log.warn = function(event, data)
+      vim.g.termio_warn_events = vim.list_extend(vim.g.termio_warn_events, { event })
+      return warn(event, data)
     end
   ]])
+  child.api.nvim_input("i")
+  Helpers.wait_for_mode(child, "t")
   child.api.nvim_input("<Esc>")
-  Helpers.wait_until(child, function()
-    return child.lua_get([[_G.termio_sent_key ~= nil]])
-  end)
-  MiniTest.expect.equality(child.lua_get([[_G.termio_sent_key]]), { "<Esc>", buf })
-  MiniTest.expect.equality(child.lua_get("vim.api.nvim_get_mode().mode"), "t")
+  Helpers.wait_for_mode(child, "nt")
+  MiniTest.expect.equality(child.lua_get([[vim.g.termio_warn_events]]), {})
+  MiniTest.expect.equality(
+    child.lua_get([[require("termio.api").prompt_range(...) == nil]], { buf }),
+    true
+  )
 end
 
 T["integrated edit"]["manual terminal leave during output keeps native insert keys"] = function()
